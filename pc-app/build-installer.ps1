@@ -1,15 +1,15 @@
-# Скрипт сборки установщика MobileAudioPC
+# Скрипт сборки установщика MobileAudio
 # 1. Self-contained publish (не single-file)
 # 2. Сборка установщика через Inno Setup
 
 $ErrorActionPreference = "Stop"
 
-$projectDir = "$PSScriptRoot\MobileAudioPC"
+$projectDir = "$PSScriptRoot\MobileAudio"
 $setupDir = "$PSScriptRoot\Setup"
-$setupOutput = "$PSScriptRoot\MobileAudioPC-Setup.exe"
+$setupOutput = "$PSScriptRoot\MobileAudio-Setup.exe"
 
 Write-Host "=== Step 1: Self-contained publish ===" -ForegroundColor Cyan
-dotnet publish "$projectDir\MobileAudioPC.csproj" `
+dotnet publish "$projectDir\MobileAudio.csproj" `
     -c Release `
     -r win-x64 `
     --self-contained true `
