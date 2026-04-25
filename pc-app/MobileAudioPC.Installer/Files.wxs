@@ -1,9 +1,0 @@
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Fragment>
-    <ComponentGroup Id="INSTALLFOLDERFiles" Directory="INSTALLFOLDER">
-      <Component>
-        <File Source="C:\Users\indig\Documents\Visual Studio Projects\MobileAudio\pc-app\MobileAudioPC\bin\Release\net8.0-windows\win-x64\publish\MobileAudioPC.exe" />
-      </Component>
-    </ComponentGroup>
-  </Fragment>
-</Wix>

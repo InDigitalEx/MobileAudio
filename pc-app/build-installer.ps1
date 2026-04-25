@@ -1,13 +1,12 @@
 # Скрипт сборки установщика MobileAudioPC
 # 1. Self-contained publish (не single-file)
-# 2. Сборка MSI через WiX
+# 2. Сборка установщика через Inno Setup
 
 $ErrorActionPreference = "Stop"
 
 $projectDir = "$PSScriptRoot\MobileAudioPC"
-$installerDir = "$PSScriptRoot\MobileAudioPC.Installer"
-$publishDir = "$projectDir\bin\Release\net8.0-windows\win-x64\publish"
-$msiOutput = "$installerDir\MobileAudioPC.msi"
+$setupDir = "$PSScriptRoot\Setup"
+$setupOutput = "$PSScriptRoot\MobileAudioPC-Setup.exe"
 
 Write-Host "=== Step 1: Self-contained publish ===" -ForegroundColor Cyan
 dotnet publish "$projectDir\MobileAudioPC.csproj" `
@@ -20,15 +19,20 @@ if ($LASTEXITCODE -ne 0) {
     throw "Publish failed"
 }
 
-Write-Host "=== Step 2: Build MSI ===" -ForegroundColor Cyan
-Push-Location $installerDir
-wix build Package.wxs Files.wxs -o MobileAudioPC.msi
-Pop-Location
+Write-Host "=== Step 2: Build installer with Inno Setup ===" -ForegroundColor Cyan
+$iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+if (-not (Test-Path $iscc)) {
+    $iscc = "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+}
+if (-not (Test-Path $iscc)) {
+    throw "Inno Setup compiler (ISCC.exe) not found. Please install Inno Setup 6 from https://jrsoftware.org/isdl.php"
+}
+
+& $iscc "$setupDir\setup.iss"
 
 if ($LASTEXITCODE -ne 0) {
-    throw "WiX build failed"
+    throw "Inno Setup build failed"
 }
 
 Write-Host "=== Done! ===" -ForegroundColor Green
-Write-Host "MSI: $msiOutput" -ForegroundColor Yellow
-
+Write-Host "Installer: $setupOutput" -ForegroundColor Yellow
