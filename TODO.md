@@ -27,3 +27,9 @@
 
 ## Status: COMPLETE
 
+## Installer (WiX v7)
+- [x] Create WiX installer project (`pc-app/MobileAudioPC.Installer/Package.wxs`)
+- [x] Create build script (`pc-app/build-installer.ps1`)
+- [x] Build MSI successfully: `pc-app/MobileAudioPC.Installer/MobileAudioPC.msi`
+- [x] Add installer project to solution (`MobileAudioPC.sln`)
+

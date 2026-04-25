@@ -36,9 +36,15 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
-# Publish
-publish/
+# Self-contained publish
+**/publish/
 *.publishsettings
+
+# === WiX Installer ===
+*.msi
+*.wixpdb
+*.wixobj
+*.cab
 
 # === Android / Gradle ===
 # Gradle files
@@ -88,4 +94,3 @@ $RECYCLE.BIN/
 *.swp
 *.swo
 *~
-
