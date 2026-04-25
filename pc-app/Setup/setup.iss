@@ -2,7 +2,7 @@
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "InDigital"
 #define MyAppURL "https://github.com/InDigitalEx/MobileAudio"
-#define MyAppExeName "MobileAudioPC.exe"
+#define MyAppExeName "MobileAudio.exe"
 
 [Setup]
 AppId={{AE4FD812-C84E-4ACC-9ACA-0579966CC503}
@@ -20,7 +20,7 @@ ArchitecturesInstallIn64BitMode=x64
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=auto
 OutputDir=..
-OutputBaseFilename=MobileAudioPC-Setup
+OutputBaseFilename=MobileAudio-Setup
 SetupIconFile=.\setup-icon.ico
 SolidCompression=yes
 WizardStyle=modern dynamic
@@ -33,8 +33,8 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "..\MobileAudioPC\bin\Release\net8.0-windows\win-x64\publish\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\MobileAudioPC\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\MobileAudio\bin\Release\net8.0-windows\win-x64\publish\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\MobileAudio\bin\Release\net8.0-windows\win-x64\publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

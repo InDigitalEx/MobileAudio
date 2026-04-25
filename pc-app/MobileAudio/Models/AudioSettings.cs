@@ -1,4 +1,4 @@
-namespace MobileAudioPC.Models;
+namespace MobileAudio.Models;
 
 public class AudioSettings
 {

@@ -2,9 +2,9 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
-using MobileAudioPC.Models;
+using MobileAudio.Models;
 
-namespace MobileAudioPC.Audio;
+namespace MobileAudio.Audio;
 
 public class UdpStreamer : IDisposable
 {

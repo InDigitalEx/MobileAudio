@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace MobileAudioPC;
+namespace MobileAudio;
 
 public partial class App : Application
 {

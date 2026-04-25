@@ -4,7 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
 
-namespace MobileAudioPC.UI;
+namespace MobileAudio.UI;
 
 public partial class AudioVisualizer : UserControl
 {

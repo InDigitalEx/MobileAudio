@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using NAudio.Wave;
 
-namespace MobileAudioPC.Audio;
+namespace MobileAudio.Audio;
 
 public class AudioCapture : IDisposable
 {

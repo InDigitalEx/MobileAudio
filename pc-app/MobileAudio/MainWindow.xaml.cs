@@ -4,10 +4,10 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
-using MobileAudioPC.Audio;
-using MobileAudioPC.Models;
+using MobileAudio.Audio;
+using MobileAudio.Models;
 
-namespace MobileAudioPC;
+namespace MobileAudio;
 
 public partial class MainWindow : Window
 {

@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace MobileAudioPC.Audio;
+namespace MobileAudio.Audio;
 
 public class DiscoveryService : IDisposable
 {
