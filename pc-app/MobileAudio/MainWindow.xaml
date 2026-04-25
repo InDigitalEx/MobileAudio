@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:ui="clr-namespace:MobileAudio.UI"
-        Title="MobileAudio Streamer" 
+        Title="Mobile Audio"
         Icon="Assets/app-icon.png"
         Height="520" Width="720"
         Background="#FF121212"
@@ -121,7 +121,7 @@
         <!-- Header -->
         <Border Grid.Row="0" Background="#FF00897B" Padding="20,16">
             <Grid>
-                <TextBlock Text="MobileAudio Streamer" 
+                <TextBlock Text="Mobile Audio"
                            FontSize="24" FontWeight="Bold" 
                            Foreground="White" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
