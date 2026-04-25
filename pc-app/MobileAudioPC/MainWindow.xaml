@@ -4,11 +4,111 @@
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:ui="clr-namespace:MobileAudioPC.UI"
         Title="MobileAudio Streamer" 
-        Height="500" Width="700"
-        Background="{DynamicResource MaterialDesignPaper}"
-        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        Height="520" Width="720"
+        Background="#FF121212"
+        Foreground="White"
         WindowStartupLocation="CenterScreen"
-        ResizeMode="CanMinimize">
+        ResizeMode="CanMinimize"
+        FontFamily="Segoe UI">
+
+    <Window.Resources>
+        <Style x:Key="RoundedButton" TargetType="Button">
+            <Setter Property="Background" Value="#FF00897B"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="20,10"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="22" 
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#FF00BFA5"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="#FF444444"/>
+                    <Setter Property="Opacity" Value="0.6"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource RoundedButton}">
+            <Setter Property="Background" Value="#FFD32F2F"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#FFE57373"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="FlatButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#FF80CBC4"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="White"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="CustomTextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="#FF1E1E1E"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="CaretBrush" Value="#FF80CBC4"/>
+            <Setter Property="BorderBrush" Value="#FF333333"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10"
+                                SnapsToDevicePixels="True">
+                            <ScrollViewer x:Name="PART_ContentHost" 
+                                          Margin="{TemplateBinding Padding}"
+                                          Focusable="false"
+                                          HorizontalScrollBarVisibility="Hidden" 
+                                          VerticalScrollBarVisibility="Hidden"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="#FF00897B"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
@@ -18,7 +118,7 @@
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <Border Grid.Row="0" Background="{DynamicResource PrimaryHueMidBrush}" Padding="20,16">
+        <Border Grid.Row="0" Background="#FF00897B" Padding="20,16">
             <Grid>
                 <TextBlock Text="MobileAudio Streamer" 
                            FontSize="24" FontWeight="Bold" 
@@ -41,29 +141,25 @@
 
             <!-- IP Address -->
             <StackPanel Grid.Row="0" Margin="0,0,0,16">
-                <TextBlock Text="IP-адрес для подключения" FontSize="14" Margin="0,0,0,8" Opacity="0.7"/>
+                <TextBlock Text="IP-адрес для подключения" FontSize="13" Margin="0,0,0,8" Opacity="0.6"/>
                 <Grid>
                     <TextBox x:Name="IpTextBox" 
-                             materialDesign:HintAssist.Hint="192.168.1.x"
-                             FontSize="16" Padding="12,8"
-                             Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                             Style="{StaticResource CustomTextBox}"/>
                     <Button x:Name="CopyIpButton" 
                             Content="Копировать" 
                             HorizontalAlignment="Right"
                             Margin="0,0,4,0"
-                            Style="{StaticResource MaterialDesignFlatButton}"
+                            Style="{StaticResource FlatButton}"
                             Click="CopyIpButton_Click"/>
                 </Grid>
             </StackPanel>
 
             <!-- Target IP -->
             <StackPanel Grid.Row="1" Margin="0,0,0,16">
-                <TextBlock Text="IP телефона (или автообнаружение)" FontSize="14" Margin="0,0,0,8" Opacity="0.7"/>
+                <TextBlock Text="IP телефона (или автообнаружение)" FontSize="13" Margin="0,0,0,8" Opacity="0.6"/>
                 <Grid>
                     <TextBox x:Name="TargetIpTextBox" 
-                             materialDesign:HintAssist.Hint="192.168.1.x"
-                             FontSize="16" Padding="12,8"
-                             Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                             Style="{StaticResource CustomTextBox}"/>
                 </Grid>
             </StackPanel>
 
@@ -71,30 +167,26 @@
             <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,16">
                 <Button x:Name="StartButton" 
                         Content="СТАРТ" 
-                        Width="140" Height="44"
-                        Background="{DynamicResource PrimaryHueMidBrush}"
-                        Foreground="White"
-                        materialDesign:ButtonAssist.CornerRadius="22"
+                        Width="140" Height="48"
+                        Style="{StaticResource RoundedButton}"
                         Click="StartButton_Click"/>
                 <Button x:Name="StopButton" 
                         Content="СТОП" 
-                        Width="140" Height="44"
+                        Width="140" Height="48"
                         Margin="16,0,0,0"
-                        Background="{DynamicResource MaterialDesignValidationErrorBrush}"
-                        Foreground="White"
-                        materialDesign:ButtonAssist.CornerRadius="22"
+                        Style="{StaticResource DangerButton}"
                         Click="StopButton_Click"
                         IsEnabled="False"/>
             </StackPanel>
 
             <!-- Visualizer -->
             <Border Grid.Row="3" 
-                    Background="#1E1E1E" 
+                    Background="#FF1E1E1E" 
                     CornerRadius="12" 
                     Padding="16">
                 <Grid>
                     <TextBlock Text="Аудио визуализатор" 
-                               FontSize="12" Opacity="0.5" 
+                               FontSize="11" Opacity="0.4" 
                                VerticalAlignment="Top" HorizontalAlignment="Left"/>
                     <ui:AudioVisualizer x:Name="Visualizer" 
                                         VerticalAlignment="Stretch" 
@@ -104,9 +196,9 @@
         </Grid>
 
         <!-- Footer -->
-        <Border Grid.Row="2" Background="#151515" Padding="20,12">
+        <Border Grid.Row="2" Background="#FF151515" Padding="20,12">
             <TextBlock Text="MobileAudio v1.0 | Локальное аудио стриминг" 
-                       FontSize="12" Opacity="0.5" HorizontalAlignment="Center"/>
+                       FontSize="11" Opacity="0.4" HorizontalAlignment="Center"/>
         </Border>
     </Grid>
 </Window>
