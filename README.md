@@ -1,33 +1,38 @@
 # MobileAudio
 
-Система для стриминга системного аудио с компьютера на Android-устройство через локальную сеть с минимальной задержкой.
+Потоковая передача системного аудио с компьютера на Android-устройство по локальной сети с минимальной задержкой.
 
 ## Архитектура
 
 - **PC-приложение** (C# WPF + NAudio) — захват системного аудио через WASAPI loopback и отправка по UDP
 - **Android-приложение** (Kotlin + Jetpack Compose) — приём UDP-потока и воспроизведение через AudioTrack
-- **Протокол** — UDP, PCM 16-bit 48kHz stereo, фреймы по 10 мс
+- **Протокол** — UDP, PCM 16-bit 48 kHz stereo, фреймы по 10 мс
 - **Автообнаружение** — broadcast UDP на порту 5001
 
 ## Структура проекта
 
 ```
 MobileAudio/
-├── pc-app/              # C# WPF приложение
-│   ├── MobileAudioPC.sln
-│   └── MobileAudioPC/
-│       ├── MobileAudioPC.csproj
-│       ├── App.xaml
-│       ├── MainWindow.xaml
-│       ├── Audio/
-│       │   ├── AudioCapture.cs
-│       │   ├── UdpStreamer.cs
-│       │   └── DiscoveryService.cs
-│       ├── UI/
-│       │   └── AudioVisualizer.xaml
-│       └── Models/
-│           └── AudioSettings.cs
-├── android-app/         # Kotlin Android приложение
+├── pc-app/                    # C# WPF приложение
+│   ├── MobileAudio.sln
+│   ├── build-installer.ps1    # Скрипт сборки установщика
+│   ├── clean.ps1              # Скрипт очистки артефактов сборки
+│   ├── MobileAudio/
+│   │   ├── MobileAudio.csproj
+│   │   ├── App.xaml
+│   │   ├── MainWindow.xaml
+│   │   ├── Audio/
+│   │   │   ├── AudioCapture.cs
+│   │   │   ├── UdpStreamer.cs
+│   │   │   └── DiscoveryService.cs
+│   │   ├── UI/
+│   │   │   └── AudioVisualizer.xaml
+│   │   └── Models/
+│   │       └── AudioSettings.cs
+│   └── Setup/
+│       ├── setup.iss          # Скрипт Inno Setup
+│       └── setup-icon.ico
+├── android-app/               # Kotlin Android приложение
 │   ├── build.gradle.kts
 │   ├── settings.gradle.kts
 │   └── app/
@@ -54,11 +59,11 @@ MobileAudio/
 - .NET 8 SDK
 - Visual Studio 2022 (или VS Code + C# Dev Kit)
 
-### Шаги
+### Сборка через Visual Studio
 
-1. Откройте решение в Visual Studio:
+1. Откройте решение:
    ```
-   pc-app/MobileAudioPC.sln
+   pc-app/MobileAudio.sln
    ```
 
 2. Восстановите NuGet-пакеты (автоматически при сборке):
@@ -68,12 +73,45 @@ MobileAudio/
 
 3. Соберите и запустите проект (F5 или Ctrl+F5).
 
-### Альтернатива через командную строку
-```bash
-cd pc-app/MobileAudioPC
+### Сборка через командную строку
+```powershell
+cd pc-app/MobileAudio
 dotnet restore
 dotnet build
 dotnet run
+```
+
+## Очистка артефактов сборки
+
+```powershell
+cd pc-app
+.\clean.ps1
+```
+
+Удаляет папки `bin/`, `obj/`, `publish/` и скомпилированный установщик.
+
+## Сборка установщика (Inno Setup)
+
+### Требования
+- Установленный [Inno Setup 6](https://jrsoftware.org/isdl.php)
+
+### Шаги
+```powershell
+cd pc-app
+.\build-installer.ps1
+```
+
+Результат: `pc-app/Setup/Output/MobileAudio-Setup.exe`
+
+Установщик содержит self-contained сборку приложения (включая .NET 8 Runtime) и работает на Windows 10/11 x64 без дополнительных зависимостей.
+
+### Примечание: размер Release
+
+Release-сборка создаётся как `self-contained` — в папку `publish` копируется весь .NET Runtime (~30–50 МБ, сотни файлов). Это ожидаемо и необходимо для автономной работы установщика.
+
+Если нужна миниатюрная версия (требует .NET 8 Desktop Runtime на ПК пользователя):
+```powershell
+dotnet publish MobileAudio\MobileAudio.csproj -c Release -r win-x64 --self-contained false
 ```
 
 ## Сборка и запуск Android-приложения
@@ -139,19 +177,17 @@ New-NetFirewallRule -DisplayName "MobileAudio" -Direction Inbound -Protocol UDP 
 | Каналы | Stereo (2) |
 | Битность | 16-bit |
 | Формат | PCM |
-| Размер фрейма | 10 мс (1920 байт) |
+| Размер фрейма | 10 мс |
 | Порт аудио | 5000 |
 | Порт обнаружения | 5001 |
 
 ## Поддержка 24-bit и других форматов
 
-PC-приложение автоматически конвертирует любой системный формат аудио (16-bit, 24-bit, 32-bit float, 32-bit int, любая частота дискретизации) в стандартизированный 16-bit PCM 48kHz stereo перед отправкой на телефон. Конвертация выполняется через `MediaFoundationResampler` из NAudio с максимальным качеством (`ResamplerQuality = 60`).
-
-Таким образом, независимо от настроек звуковой карты или формата вывода приложений на ПК, Android-устройство всегда получает корректный поток.
+PC-приложение автоматически конвертирует любой системный формат аудио (16-bit, 24-bit, 32-bit float, любая частота дискретизации и количество каналов) в стандартизированный 16-bit PCM 48 kHz stereo перед отправкой на телефон.
 
 ## Оптимизация задержки
 
-- Используйте 5GHz Wi-Fi вместо 2.4GHz
+- Используйте 5 GHz Wi-Fi вместо 2.4 GHz
 - Разместите устройства ближе к роутеру
 - Закройте другие сетевые приложения
 - На Android используйте режим "Игры" или "Производительность"
