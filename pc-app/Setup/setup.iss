@@ -19,7 +19,6 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=auto
-OutputDir=..
 OutputBaseFilename=MobileAudio-Setup
 SetupIconFile=.\setup-icon.ico
 SolidCompression=yes

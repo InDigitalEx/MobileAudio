@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 
 $projectDir = "$PSScriptRoot\MobileAudio"
 $setupDir = "$PSScriptRoot\Setup"
-$setupOutput = "$PSScriptRoot\MobileAudio-Setup.exe"
+$setupOutput = "$PSScriptRoot\Setup\Output\MobileAudio-Setup.exe"
 
 Write-Host "=== Step 1: Self-contained publish ===" -ForegroundColor Cyan
 dotnet publish "$projectDir\MobileAudio.csproj" `
