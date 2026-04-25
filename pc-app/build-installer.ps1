@@ -22,7 +22,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "=== Step 2: Build MSI ===" -ForegroundColor Cyan
 Push-Location $installerDir
-wix build Package.wxs -o MobileAudioPC.msi
+wix build Package.wxs Files.wxs -o MobileAudioPC.msi
 Pop-Location
 
 if ($LASTEXITCODE -ne 0) {

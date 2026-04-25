@@ -9,9 +9,7 @@
     </Feature>
 
     <StandardDirectory Id="ProgramFiles64Folder">
-      <Directory Id="INSTALLFOLDER" Name="MobileAudioPC">
-        <Files Include="C:\Users\indig\Documents\Visual Studio Projects\MobileAudio\pc-app\MobileAudioPC\bin\Release\net8.0-windows\win-x64\publish\**" />
-      </Directory>
+      <Directory Id="INSTALLFOLDER" Name="MobileAudioPC" />
     </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
@@ -29,4 +27,3 @@
     </StandardDirectory>
   </Package>
 </Wix>
-
