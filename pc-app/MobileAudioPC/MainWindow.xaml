@@ -4,6 +4,7 @@
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:ui="clr-namespace:MobileAudioPC.UI"
         Title="MobileAudio Streamer" 
+        Icon="Assets/app-icon.png"
         Height="520" Width="720"
         Background="#FF121212"
         Foreground="White"
