@@ -1,0 +1,91 @@
+# === C# / .NET ===
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options
+.vs/
+*.user
+*.userosscache
+*.suo
+*.cache
+*.ilk
+*.pdb
+*.obj
+*.exe
+*.dll
+*.lib
+*.nupkg
+*.snupkg
+
+# NuGet
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Publish
+publish/
+*.publishsettings
+
+# === Android / Gradle ===
+# Gradle files
+.gradle/
+build/
+
+# Local configuration
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Keystore files
+*.jks
+*.keystore
+
+# External native build
+cxx/
+.externalNativeBuild/
+
+# Capture / profiling
+captures/
+
+# === OS ===
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.nfs*
+
+# === Misc ===
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
