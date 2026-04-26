@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
                 var isConnected by remember { mutableStateOf(false) }
                 var packetsReceived by remember { mutableIntStateOf(0) }
                 var packetLossPercent by remember { mutableIntStateOf(0) }
+                var latencyMs by remember { mutableIntStateOf(30) }
 
                 audioReceiver = remember {
                     AudioReceiver(
@@ -55,6 +56,11 @@ class MainActivity : ComponentActivity() {
                         isConnected = isConnected,
                         packetsReceived = packetsReceived,
                         packetLossPercent = packetLossPercent,
+                        currentLatencyMs = latencyMs,
+                        onLatencyChange = { newLatency ->
+                            latencyMs = newLatency
+                            audioReceiver.setLatency(newLatency)
+                        },
                         onDisconnect = {
                             audioReceiver.stop()
                             currentScreen = "connect"

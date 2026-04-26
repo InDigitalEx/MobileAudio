@@ -16,6 +16,8 @@ fun PlayerScreen(
     isConnected: Boolean,
     packetsReceived: Int,
     packetLossPercent: Int,
+    currentLatencyMs: Int,
+    onLatencyChange: (Int) -> Unit,
     onDisconnect: () -> Unit
 ) {
     Column(
@@ -65,6 +67,38 @@ fun PlayerScreen(
                     StatCard("Статус", if (isConnected) "Подключено" else "Ожидание...")
                     StatCard("Пакетов", packetsReceived.toString())
                     StatCard("Потери", "$packetLossPercent%")
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Latency slider
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Задержка буфера: ${currentLatencyMs}ms",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
+                    )
+                    Slider(
+                        value = currentLatencyMs.toFloat(),
+                        onValueChange = { onLatencyChange(it.toInt()) },
+                        valueRange = 10f..80f,
+                        steps = 6, // 10, 20, 30, 40, 50, 60, 70, 80
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Teal40,
+                            activeTrackColor = Teal40
+                        )
+                    )
+                    Text(
+                        text = if (currentLatencyMs <= 20) "Низкая (могут быть щелчки)" 
+                               else if (currentLatencyMs <= 40) "Сбалансированная"
+                               else "Стабильная (больше задержка)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                    )
                 }
             }
         }

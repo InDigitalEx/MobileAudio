@@ -14,17 +14,16 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class AudioReceiver(
     private val onConnected: () -> Unit,
     private val onDisconnected: () -> Unit,
-    private val onStatsUpdate: (Int, Int) -> Unit
+    private val onStatsUpdate: (Int, Int) -> Unit,
+    private var targetLatencyMs: Int = 30
 ) {
     companion object {
         private const val TAG = "AudioReceiver"
         // 48kHz stereo 16bit = 192000 bytes/sec
-        // 5ms frame = 960 bytes
+        // 3ms frame = 576 bytes
         private const val BYTES_PER_MS = 192
-        private const val TARGET_LATENCY_MS = 30      // start playing after 30ms
-        private const val MAX_LATENCY_MS = 80         // drop packets if latency exceeds 80ms
-        private const val TARGET_JITTER_BYTES = TARGET_LATENCY_MS * BYTES_PER_MS  // 5760
-        private const val MAX_JITTER_BYTES = MAX_LATENCY_MS * BYTES_PER_MS        // 15360
+        private const val MAX_LATENCY_MS = 100        // drop packets if latency exceeds 100ms
+        private const val SILENCE_INSERT_THRESHOLD = 20  // insert silence for up to 20 empty cycles (~100ms)
     }
 
     private var socket: DatagramSocket? = null
@@ -39,6 +38,18 @@ class AudioReceiver(
     private var packetsLost = 0
     private var bytesWritten = 0
     private var isPlaying = false
+
+    // Dynamic latency settings
+    private val targetJitterBytes: Int get() = targetLatencyMs * BYTES_PER_MS
+    private val maxJitterBytes: Int get() = MAX_LATENCY_MS * BYTES_PER_MS
+    private val frameSize: Int get() = targetLatencyMs * BYTES_PER_MS / 10  // approximate
+
+    fun setLatency(latencyMs: Int) {
+        targetLatencyMs = latencyMs.coerceIn(10, 100)
+        Log.d(TAG, "Latency set to ${targetLatencyMs}ms")
+    }
+
+    fun getLatency(): Int = targetLatencyMs
 
     fun start(pcIp: String, port: Int = 5000) {
         Log.d(TAG, "Starting receiver on port $port")
@@ -108,7 +119,7 @@ class AudioReceiver(
             var currentSize = jitterBuffer.sumOf { it.size }
 
             // Hard latency cap: drop oldest packets if we're over max
-            while (currentSize + audioData.size > MAX_JITTER_BYTES && jitterBuffer.isNotEmpty()) {
+            while (currentSize + audioData.size > maxJitterBytes && jitterBuffer.isNotEmpty()) {
                 val dropped = jitterBuffer.poll()
                 if (dropped != null) currentSize -= dropped.size
             }
@@ -134,6 +145,7 @@ class AudioReceiver(
         Log.d(TAG, "Playback loop started")
         var playCount = 0
         var consecutiveEmpty = 0
+        val silenceFrame = ByteArray(576) { 0 }
 
         while (coroutineContext.isActive) {
             val data = synchronized(jitterBuffer) {
@@ -141,21 +153,28 @@ class AudioReceiver(
 
                 if (!isPlaying) {
                     // Wait until we have enough data to start
-                    if (bufferSize < TARGET_JITTER_BYTES) {
+                    if (bufferSize < targetJitterBytes) {
                         return@synchronized null
                     }
                     isPlaying = true
+                    consecutiveEmpty = 0
                     Log.d(TAG, "Started playing, buffer=${bufferSize / BYTES_PER_MS}ms")
                 }
 
-                // If buffer is critically low, we have an underrun
+                // If buffer is empty, insert silence (PLC) instead of stopping
                 if (bufferSize == 0) {
-                    isPlaying = false
                     consecutiveEmpty++
-                    return@synchronized null
+                    if (consecutiveEmpty >= SILENCE_INSERT_THRESHOLD) {
+                        // Too many consecutive silences, reset playback state
+                        isPlaying = false
+                        consecutiveEmpty = 0
+                        Log.d(TAG, "Too many underruns, resetting playback")
+                        return@synchronized null
+                    }
+                    // Return silence frame to prevent AudioTrack gap/click
+                    return@synchronized silenceFrame
                 }
                 consecutiveEmpty = 0
-
                 jitterBuffer.poll()
             }
 
@@ -183,12 +202,7 @@ class AudioReceiver(
                     Log.d(TAG, "Played $playCount chunks, latency=${latency}ms")
                 }
             } else {
-                // Buffer underrun - wait a bit
-                if (consecutiveEmpty > 10) {
-                    // Reset playback state if we keep underrunning
-                    isPlaying = false
-                    consecutiveEmpty = 0
-                }
+                // Waiting for enough data to start
                 delay(5)
             }
         }
@@ -211,4 +225,3 @@ class AudioReceiver(
         isPlaying = false
     }
 }
-
