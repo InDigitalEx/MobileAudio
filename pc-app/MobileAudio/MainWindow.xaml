@@ -5,7 +5,7 @@
         xmlns:ui="clr-namespace:MobileAudio.UI"
         Title="Mobile Audio"
         Icon="Assets/app-icon.png"
-        Height="520" Width="720"
+        Height="640" Width="720"
         Background="#FF121212"
         Foreground="White"
         WindowStartupLocation="CenterScreen"
@@ -137,7 +137,8 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="140"/>
+                <RowDefinition Height="120"/>
             </Grid.RowDefinitions>
 
             <!-- IP Address -->
@@ -184,15 +185,33 @@
             <Border Grid.Row="3" 
                     Background="#FF1E1E1E" 
                     CornerRadius="12" 
-                    Padding="16">
+                    Padding="16" Margin="0,0,0,8">
                 <Grid>
                     <TextBlock Text="Аудио визуализатор" 
                                FontSize="11" Opacity="0.4" 
                                VerticalAlignment="Top" HorizontalAlignment="Left"/>
                     <ui:AudioVisualizer x:Name="Visualizer" 
                                         VerticalAlignment="Stretch" 
-                                        HorizontalAlignment="Stretch"/>
+                                        HorizontalAlignment="Stretch"
+                                        Margin="0,20,0,0"/>
                 </Grid>
+            </Border>
+
+            <!-- Logger -->
+            <Border Grid.Row="4" 
+                    Background="#FF151515" 
+                    CornerRadius="8" 
+                    Padding="8">
+                <ScrollViewer x:Name="LogScrollViewer" VerticalScrollBarVisibility="Auto">
+                    <TextBox x:Name="LogTextBox"
+                             Background="Transparent"
+                             Foreground="#FF888888"
+                             FontFamily="Consolas"
+                             FontSize="11"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             BorderThickness="0"/>
+                </ScrollViewer>
             </Border>
         </Grid>
 
@@ -203,4 +222,3 @@
         </Border>
     </Grid>
 </Window>
-

@@ -8,27 +8,30 @@ public class AudioCapture : IDisposable
 {
     private WasapiLoopbackCapture? _capture;
     private BufferedWaveProvider? _sourceBuffer;
+    private IWaveProvider? _resampler;
     private readonly int _sampleRate;
     private readonly int _channels;
     private readonly int _bitsPerSample;
+    private readonly int _frameDurationMs;
     private readonly int _frameSize;
     private readonly Thread _readThread;
+    private readonly object _lock = new();
     private bool _running;
-    private int _sourceBytesPerSample;
-    private int _sourceChannels;
-    private int _sourceSampleRate;
     private bool _needsConversion;
 
     public event EventHandler? CaptureStopped;
     public event EventHandler? CaptureStarted;
+    public event EventHandler<byte[]>? FrameCaptured;
 
     public AudioCapture(int sampleRate = 48000, int channels = 2, int bitsPerSample = 16, int frameDurationMs = 10)
     {
         _sampleRate = sampleRate;
         _channels = channels;
         _bitsPerSample = bitsPerSample;
+        _frameDurationMs = frameDurationMs;
         _frameSize = sampleRate * channels * (bitsPerSample / 8) * frameDurationMs / 1000;
-        _readThread = new Thread(ReadLoop) { IsBackground = true };
+        _readThread = new Thread(ReadLoop) { IsBackground = true, Priority = ThreadPriority.Highest };
+        Console.WriteLine($"[AudioCapture] FrameSize={_frameSize} bytes ({frameDurationMs}ms), TargetFormat={sampleRate}Hz/{bitsPerSample}bit/{channels}ch");
     }
 
     public void Start()
@@ -36,10 +39,10 @@ public class AudioCapture : IDisposable
         if (_running) return;
         _capture = new WasapiLoopbackCapture();
         var fmt = _capture.WaveFormat;
-        _sourceBytesPerSample = fmt.BitsPerSample / 8;
-        _sourceChannels = fmt.Channels;
-        _sourceSampleRate = fmt.SampleRate;
         _needsConversion = fmt.SampleRate != _sampleRate || fmt.Channels != _channels || fmt.BitsPerSample != _bitsPerSample;
+
+        Console.WriteLine($"[AudioCapture] System format: {fmt}");
+        Console.WriteLine($"[AudioCapture] Needs conversion: {_needsConversion}");
 
         _sourceBuffer = new BufferedWaveProvider(fmt)
         {
@@ -47,125 +50,82 @@ public class AudioCapture : IDisposable
             DiscardOnBufferOverflow = true
         };
 
+        if (_needsConversion)
+        {
+            try
+            {
+                // For 32-bit float -> 16-bit conversion, use WaveFloatTo16Provider (simpler, no artifacts)
+                _resampler = new WaveFloatTo16Provider(_sourceBuffer);
+                Console.WriteLine("[AudioCapture] WaveFloatTo16Provider created");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AudioCapture] Failed to create converter: {ex.Message}");
+                _resampler = null;
+            }
+        }
+
         _capture.DataAvailable += OnDataAvailable;
         _capture.RecordingStopped += OnRecordingStopped;
         _capture.StartRecording();
         _running = true;
         _readThread.Start();
         CaptureStarted?.Invoke(this, EventArgs.Empty);
+        Console.WriteLine("[AudioCapture] Started");
     }
 
     public void Stop()
     {
+        Console.WriteLine("[AudioCapture] Stopping...");
         _running = false;
         _capture?.StopRecording();
-        _capture?.Dispose();
-        _capture = null;
+        lock (_lock)
+        {
+            _capture?.Dispose();
+            _capture = null;
+            (_resampler as IDisposable)?.Dispose();
+            _resampler = null;
+        }
         CaptureStopped?.Invoke(this, EventArgs.Empty);
+        Console.WriteLine("[AudioCapture] Stopped");
     }
 
     public byte[]? ReadFrame()
     {
-        if (_sourceBuffer == null) return null;
-
-        if (_needsConversion)
+        lock (_lock)
         {
-            int sourceFrameSize = _frameSize * _sourceBytesPerSample * _sourceChannels / ((_bitsPerSample / 8) * _channels);
-            sourceFrameSize = Math.Max(sourceFrameSize, _sourceChannels * _sourceBytesPerSample);
-
-            if (_sourceBuffer.BufferedBytes < sourceFrameSize) return null;
-
-            var sourceFrame = new byte[sourceFrameSize];
-            _sourceBuffer.Read(sourceFrame, 0, sourceFrameSize);
-            return ConvertToTargetFormat(sourceFrame);
-        }
-
-        if (_sourceBuffer.BufferedBytes >= _frameSize)
-        {
-            var frame = new byte[_frameSize];
-            _sourceBuffer.Read(frame, 0, _frameSize);
-            return frame;
-        }
-        return null;
-    }
-
-    private byte[] ConvertToTargetFormat(byte[] source)
-    {
-        int targetBytesPerSample = _bitsPerSample / 8;
-        int sourceSamples = source.Length / (_sourceBytesPerSample * _sourceChannels);
-        int targetSamples = _sampleRate * sourceSamples / _sourceSampleRate;
-        targetSamples = Math.Max(targetSamples, 1);
-
-        var result = new byte[targetSamples * _channels * targetBytesPerSample];
-
-        for (int i = 0; i < targetSamples; i++)
-        {
-            float t = (float)i / targetSamples;
-            int srcIdx = (int)(t * sourceSamples);
-            srcIdx = Math.Min(srcIdx, sourceSamples - 1);
-
-            for (int ch = 0; ch < _channels; ch++)
+            if (_resampler != null)
             {
-                int srcCh = Math.Min(ch, _sourceChannels - 1);
-                int srcOffset = (srcIdx * _sourceChannels + srcCh) * _sourceBytesPerSample;
-                float sample = 0f;
-
-                if (srcOffset + _sourceBytesPerSample <= source.Length)
+                var frame = new byte[_frameSize];
+                int read = 0;
+                try
                 {
-                    if (_sourceBytesPerSample == 1)
-                    {
-                        sample = (source[srcOffset] - 128) / 128f;
-                    }
-                    else if (_sourceBytesPerSample == 2)
-                    {
-                        short val = (short)(source[srcOffset] | (source[srcOffset + 1] << 8));
-                        sample = val / 32768f;
-                    }
-                    else if (_sourceBytesPerSample == 3)
-                    {
-                        int val = source[srcOffset] | (source[srcOffset + 1] << 8) | (source[srcOffset + 2] << 16);
-                        if ((val & 0x800000) != 0) val |= unchecked((int)0xFF000000);
-                        sample = val / 8388608f;
-                    }
-                    else if (_sourceBytesPerSample == 4)
-                    {
-                        if (_capture?.WaveFormat.Encoding == WaveFormatEncoding.IeeeFloat)
-                        {
-                            sample = BitConverter.ToSingle(source, srcOffset);
-                        }
-                        else
-                        {
-                            int val = BitConverter.ToInt32(source, srcOffset);
-                            sample = val / 2147483648f;
-                        }
-                    }
+                    read = _resampler.Read(frame, 0, _frameSize);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AudioCapture] Resampler read error: {ex.Message}");
+                    return null;
                 }
 
-                sample = Math.Max(-1f, Math.Min(1f, sample));
-
-                int dstOffset = (i * _channels + ch) * targetBytesPerSample;
-                if (targetBytesPerSample == 2)
+                if (read > 0)
                 {
-                    short val16 = (short)(sample * 32767);
-                    result[dstOffset] = (byte)(val16 & 0xFF);
-                    result[dstOffset + 1] = (byte)((val16 >> 8) & 0xFF);
+                    if (read < _frameSize)
+                        Array.Clear(frame, read, _frameSize - read);
+                    return frame;
                 }
-                else if (targetBytesPerSample == 3)
-                {
-                    int val24 = (int)(sample * 8388607);
-                    result[dstOffset] = (byte)(val24 & 0xFF);
-                    result[dstOffset + 1] = (byte)((val24 >> 8) & 0xFF);
-                    result[dstOffset + 2] = (byte)((val24 >> 16) & 0xFF);
-                }
-                else if (targetBytesPerSample == 4)
-                {
-                    int val32 = (int)(sample * 2147483647);
-                    BitConverter.GetBytes(val32).CopyTo(result, dstOffset);
-                }
+                return null;
             }
-        }
 
-        return result;
+            if (_sourceBuffer == null) return null;
+            if (_sourceBuffer.BufferedBytes >= _frameSize)
+            {
+                var frame = new byte[_frameSize];
+                _sourceBuffer.Read(frame, 0, _frameSize);
+                return frame;
+            }
+            return null;
+        }
     }
 
     public float[] GetAudioLevels(byte[] pcmData, int barCount)
@@ -210,26 +170,56 @@ public class AudioCapture : IDisposable
 
     private void OnDataAvailable(object? sender, WaveInEventArgs e)
     {
-        _sourceBuffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+        lock (_lock)
+        {
+            _sourceBuffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+        }
     }
 
     private void OnRecordingStopped(object? sender, StoppedEventArgs e)
     {
         _running = false;
+        Console.WriteLine("[AudioCapture] Recording stopped");
     }
 
     private void ReadLoop()
     {
+        Console.WriteLine("[AudioCapture] ReadLoop started");
+        int frameCount = 0;
+        var nextFrameTime = DateTime.UtcNow;
         while (_running)
         {
-            Thread.Sleep(1);
+            try
+            {
+                var frame = ReadFrame();
+                if (frame != null)
+                {
+                    frameCount++;
+                    if (frameCount % 100 == 0)
+                        Console.WriteLine($"[AudioCapture] Frames captured: {frameCount}");
+                    FrameCaptured?.Invoke(this, frame);
+                    // Schedule next frame at exact real-time interval
+                    nextFrameTime = nextFrameTime.AddMilliseconds(_frameDurationMs);
+                    var sleepMs = (int)(nextFrameTime - DateTime.UtcNow).TotalMilliseconds;
+                    if (sleepMs > 0)
+                        Thread.Sleep(sleepMs);
+                }
+                else
+                {
+                    Thread.Sleep(1);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AudioCapture] ReadLoop error: {ex}");
+                Thread.Sleep(100);
+            }
         }
+        Console.WriteLine("[AudioCapture] ReadLoop ended");
     }
 
     public void Dispose()
     {
         Stop();
-        _capture?.Dispose();
     }
 }
-

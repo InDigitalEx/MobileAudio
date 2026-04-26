@@ -1,6 +1,5 @@
 using System;
 using System.Net;
-using System.Threading;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -16,16 +15,23 @@ public partial class MainWindow : Window
     private readonly UdpStreamer _udpStreamer;
     private readonly DiscoveryService _discoveryService;
     private readonly DispatcherTimer _visualizerTimer;
-    private readonly float[] _audioLevels;
+    private byte[]? _lastFrame;
+    private readonly object _frameLock = new();
+    private int _visualizerFrames;
 
     public MainWindow()
     {
         InitializeComponent();
         _settings = new AudioSettings();
         _audioCapture = new AudioCapture(_settings.SampleRate, _settings.Channels, _settings.BitsPerSample, _settings.FrameDurationMs);
-        _udpStreamer = new UdpStreamer(_settings, _audioCapture);
+        _udpStreamer = new UdpStreamer(_settings);
         _discoveryService = new DiscoveryService(_settings.DiscoveryPort, _settings.UdpPort);
-        _audioLevels = new float[48];
+
+        _audioCapture.FrameCaptured += OnFrameCaptured;
+        _audioCapture.CaptureStarted += (s, e) => Log("[MainWindow] Capture started");
+        _audioCapture.CaptureStopped += (s, e) => Log("[MainWindow] Capture stopped");
+        _udpStreamer.Started += (s, e) => Log("[MainWindow] Streamer started");
+        _udpStreamer.Stopped += (s, e) => Log("[MainWindow] Streamer stopped");
 
         _visualizerTimer = new DispatcherTimer
         {
@@ -37,19 +43,49 @@ public partial class MainWindow : Window
         Closing += OnWindowClosing;
     }
 
+    private void Log(string message)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            LogTextBox.AppendText($"[{DateTime.Now:HH:mm:ss.fff}] {message}{Environment.NewLine}");
+            LogScrollViewer.ScrollToEnd();
+        });
+    }
+
+    private int _framesCaptured;
+    private DateTime _lastStatsTime = DateTime.Now;
+
+    private void OnFrameCaptured(object? sender, byte[] frame)
+    {
+        lock (_frameLock)
+        {
+            _lastFrame = frame;
+        }
+        _udpStreamer.SendFrame(frame);
+        _framesCaptured++;
+
+        // Log stats every 5 seconds
+        if ((DateTime.Now - _lastStatsTime).TotalSeconds >= 5)
+        {
+            _lastStatsTime = DateTime.Now;
+            Log($"[Stats] Frames captured: {_framesCaptured}, Streamer active: {_udpStreamer.IsStreaming}");
+        }
+    }
+
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
         var localIp = GetLocalIpAddress();
         IpTextBox.Text = localIp;
         _discoveryService.Start();
+        Log($"[MainWindow] Local IP: {localIp}");
     }
 
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         _visualizerTimer.Stop();
         _udpStreamer.Stop();
+        _audioCapture.Stop();
         _discoveryService.Stop();
-        _audioCapture.Dispose();
     }
 
     private void StartButton_Click(object sender, RoutedEventArgs e)
@@ -63,26 +99,33 @@ public partial class MainWindow : Window
 
         try
         {
+            Log("[MainWindow] Starting capture and stream...");
+            _audioCapture.Start();
             _udpStreamer.Start(targetIp, _settings.UdpPort);
             _visualizerTimer.Start();
             UpdateStatus(true);
             StartButton.IsEnabled = false;
             StopButton.IsEnabled = true;
+            Log("[MainWindow] Started successfully");
         }
         catch (Exception ex)
         {
+            Log($"[MainWindow] Start error: {ex}");
             MessageBox.Show($"Ошибка запуска: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
     private void StopButton_Click(object sender, RoutedEventArgs e)
     {
+        Log("[MainWindow] Stopping...");
         _udpStreamer.Stop();
+        _audioCapture.Stop();
         _visualizerTimer.Stop();
         Visualizer.Clear();
         UpdateStatus(false);
         StartButton.IsEnabled = true;
         StopButton.IsEnabled = false;
+        _visualizerFrames = 0;
     }
 
     private void CopyIpButton_Click(object sender, RoutedEventArgs e)
@@ -93,11 +136,30 @@ public partial class MainWindow : Window
 
     private void OnVisualizerTick(object? sender, EventArgs e)
     {
-        var frame = _audioCapture.ReadFrame();
+        byte[]? frame;
+        lock (_frameLock)
+        {
+            frame = _lastFrame;
+        }
+
         if (frame != null)
         {
-            var levels = _audioCapture.GetAudioLevels(frame, _audioLevels.Length);
-            Visualizer.UpdateLevels(levels);
+            try
+            {
+                var levels = _audioCapture.GetAudioLevels(frame, 48);
+                Visualizer.UpdateLevels(levels);
+                _visualizerFrames++;
+                if (_visualizerFrames % 20 == 0)
+                    Log($"[MainWindow] Visualizer updated, frames shown: {_visualizerFrames}");
+            }
+            catch (Exception ex)
+            {
+                Log($"[MainWindow] Visualizer error: {ex.Message}");
+            }
+        }
+        else
+        {
+            Log("[MainWindow] No frame for visualizer");
         }
     }
 
@@ -132,4 +194,3 @@ public partial class MainWindow : Window
         return "127.0.0.1";
     }
 }
-
