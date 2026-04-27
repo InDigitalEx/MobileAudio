@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using MobileAudio.Audio;
@@ -76,6 +79,7 @@ public partial class MainWindow : Window
     {
         var localIp = GetLocalIpAddress();
         IpTextBox.Text = localIp;
+        _discoveryService.DevicesUpdated += OnDevicesUpdated;
         _discoveryService.Start();
         Log($"[MainWindow] Local IP: {localIp}");
     }
@@ -132,6 +136,73 @@ public partial class MainWindow : Window
     {
         Clipboard.SetText(IpTextBox.Text);
         MessageBox.Show("IP скопирован в буфер обмена", "Готово", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void OnDevicesUpdated(object? sender, List<DiscoveredDevice> devices)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            DevicesPanel.Children.Clear();
+            if (devices.Count == 0)
+            {
+                DevicesPanel.Children.Add(new TextBlock
+                {
+                    Text = "Поиск устройств...",
+                    FontSize = 13,
+                    Opacity = 0.4,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin = new Thickness(0, 8, 0, 8)
+                });
+                return;
+            }
+
+            foreach (var device in devices)
+            {
+                var border = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(30, 30, 30)),
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(12, 8, 12, 8),
+                    Margin = new Thickness(0, 0, 0, 6),
+                    Cursor = System.Windows.Input.Cursors.Hand
+                };
+
+                var grid = new Grid();
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var nameTb = new TextBlock
+                {
+                    Text = $"{device.DeviceName}",
+                    FontSize = 14,
+                    Foreground = new SolidColorBrush(Colors.White),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(nameTb, 0);
+
+                var ipTb = new TextBlock
+                {
+                    Text = device.IpAddress,
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush(Color.FromRgb(128, 203, 196)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(12, 0, 0, 0)
+                };
+                Grid.SetColumn(ipTb, 1);
+
+                grid.Children.Add(nameTb);
+                grid.Children.Add(ipTb);
+                border.Child = grid;
+
+                border.MouseLeftButtonDown += (s, ev) =>
+                {
+                    TargetIpTextBox.Text = device.IpAddress;
+                    Log($"[Discovery] Selected device: {device.DeviceName} ({device.IpAddress})");
+                };
+
+                DevicesPanel.Children.Add(border);
+            }
+        });
     }
 
     private void OnVisualizerTick(object? sender, EventArgs e)

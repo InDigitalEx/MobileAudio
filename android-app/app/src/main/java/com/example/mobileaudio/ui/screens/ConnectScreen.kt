@@ -1,5 +1,6 @@
 package com.example.mobileaudio.ui.screens
 
+import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -7,8 +8,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.mobileaudio.network.DiscoveredPc
 import com.example.mobileaudio.network.DiscoveryListener
 import com.example.mobileaudio.ui.theme.Teal40
 import kotlinx.coroutines.delay
@@ -19,18 +22,28 @@ import kotlinx.coroutines.launch
 fun ConnectScreen(
     onConnect: (String) -> Unit
 ) {
+    val context = LocalContext.current
     var ipAddress by remember { mutableStateOf("") }
-    var isSearching by remember { mutableStateOf(false) }
-    var discoveredIp by remember { mutableStateOf<String?>(null) }
+    var discoveredPcs by remember { mutableStateOf<List<DiscoveredPc>>(emptyList()) }
+    var isSearching by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
-    val discoveryListener = remember { DiscoveryListener() }
+    val discoveryListener = remember { DiscoveryListener(context) }
+
+    DisposableEffect(Unit) {
+        discoveryListener.start { devices ->
+            discoveredPcs = devices
+            isSearching = devices.isEmpty()
+        }
+        onDispose {
+            discoveryListener.stop()
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = "MobileAudio",
@@ -46,7 +59,84 @@ fun ConnectScreen(
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
         )
 
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Discovered devices list
+        Text(
+            text = "Найденные компьютеры",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(12.dp)
+            ) {
+                when {
+                    isSearching && discoveredPcs.isEmpty() -> {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(40.dp),
+                                color = Teal40,
+                                strokeWidth = 3.dp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Поиск устройств в сети...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                    discoveredPcs.isEmpty() -> {
+                        Text(
+                            text = "Устройства не найдены.\\nУбедитесь, что PC-приложение запущено и оба устройства в одной сети.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                            modifier = Modifier.align(Alignment.Center),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                    else -> {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            discoveredPcs.forEach { pc ->
+                                DiscoveredPcCard(
+                                    pc = pc,
+                                    onClick = { onConnect(pc.ipAddress) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = "или введите IP вручную",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         OutlinedTextField(
             value = ipAddress,
@@ -58,7 +148,7 @@ fun ConnectScreen(
             shape = RoundedCornerShape(12.dp)
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Button(
             onClick = {
@@ -68,70 +158,54 @@ fun ConnectScreen(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(28.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Teal40)
+                .height(52.dp),
+            shape = RoundedCornerShape(26.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Teal40),
+            enabled = ipAddress.isNotBlank()
         ) {
             Text("ПОДКЛЮЧИТЬСЯ", style = MaterialTheme.typography.labelLarge)
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Text(
-            text = "или",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+@Composable
+private fun DiscoveredPcCard(
+    pc: DiscoveredPc,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
         )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Button(
-            onClick = {
-                isSearching = true
-                discoveredIp = null
-                discoveryListener.start { ip, _ ->
-                    discoveredIp = ip
-                    isSearching = false
-                }
-                scope.launch {
-                    delay(5000)
-                    if (isSearching) {
-                        isSearching = false
-                        discoveryListener.stop()
-                    }
-                }
-            },
+    ) {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(28.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            enabled = !isSearching
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            if (isSearching) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                Text("АВТООБНАРУЖЕНИЕ", style = MaterialTheme.typography.labelLarge)
-            }
-        }
-
-        discoveredIp?.let {
-            Spacer(modifier = Modifier.height(16.dp))
-            Card(
-                onClick = { onConnect(it) },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            ) {
+            Column {
                 Text(
-                    text = "Найден: $it",
-                    modifier = Modifier.padding(16.dp),
+                    text = pc.deviceName,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
+                Text(
+                    text = pc.ipAddress,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                )
             }
+            Icon(
+                imageVector = androidx.compose.material.icons.Icons.Default.PlayArrow,
+                contentDescription = "Подключиться",
+                tint = Teal40,
+                modifier = Modifier.size(28.dp)
+            )
         }
     }
 }

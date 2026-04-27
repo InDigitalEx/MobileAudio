@@ -18,10 +18,19 @@
 - [x] Create MainActivity.kt
 - [x] Create AudioPlayer.kt (PERFORMANCE_MODE_LOW_LATENCY, Log.d)
 - [x] Create AudioReceiver.kt (jitter buffer, playback loop, Log.d)
-- [x] Create DiscoveryListener.kt
-- [x] Create UI screens (Connect, Player)
+- [x] Create DiscoveryListener.kt (two-way broadcast + multicast lock)
+- [x] Create UI screens (Connect with device cards, Player)
 - [x] Create UI theme (Material3 dark)
 - [x] Create AudioVisualizer component
+
+## Device Discovery (completed)
+- [x] Two-way discovery: PC broadcasts itself, Android broadcasts itself
+- [x] PC shows list of found phones with friendly names (hostname)
+- [x] Android shows list of found PCs with friendly names (device model)
+- [x] Click/tap on discovered device auto-fills IP and connects
+- [x] Auto-cleanup of stale devices (10s TTL)
+- [x] Manual IP entry as fallback
+- [x] Android: WifiManager.MulticastLock for reliable broadcast reception
 
 ## Documentation
 - [x] Create README.md with build and run instructions

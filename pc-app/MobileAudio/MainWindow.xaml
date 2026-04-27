@@ -137,6 +137,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="140"/>
                 <RowDefinition Height="120"/>
             </Grid.RowDefinitions>
@@ -157,16 +158,32 @@
             </StackPanel>
 
             <!-- Target IP -->
-            <StackPanel Grid.Row="1" Margin="0,0,0,16">
-                <TextBlock Text="IP телефона (или автообнаружение)" FontSize="13" Margin="0,0,0,8" Opacity="0.6"/>
+            <StackPanel Grid.Row="1" Margin="0,0,0,8">
+                <TextBlock Text="IP телефона" FontSize="13" Margin="0,0,0,8" Opacity="0.6"/>
                 <Grid>
                     <TextBox x:Name="TargetIpTextBox" 
                              Style="{StaticResource CustomTextBox}"/>
                 </Grid>
             </StackPanel>
 
+            <!-- Discovered Devices -->
+            <StackPanel Grid.Row="2" Margin="0,0,0,16">
+                <TextBlock Text="Найденные устройства" FontSize="13" Margin="0,0,0,8" Opacity="0.6"/>
+                <Border Background="#FF1E1E1E" CornerRadius="10" Padding="8" MaxHeight="120">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="DevicesPanel">
+                            <TextBlock Text="Поиск устройств..." 
+                                       FontSize="13" Opacity="0.4" 
+                                       HorizontalAlignment="Center"
+                                       Margin="0,8,0,8"
+                                       x:Name="NoDevicesText"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </StackPanel>
+
             <!-- Controls -->
-            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,16">
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,16">
                 <Button x:Name="StartButton" 
                         Content="СТАРТ" 
                         Width="140" Height="48"
@@ -182,7 +199,7 @@
             </StackPanel>
 
             <!-- Visualizer -->
-            <Border Grid.Row="3" 
+            <Border Grid.Row="4" 
                     Background="#FF1E1E1E" 
                     CornerRadius="12" 
                     Padding="16" Margin="0,0,0,8">
@@ -198,7 +215,7 @@
             </Border>
 
             <!-- Logger -->
-            <Border Grid.Row="4" 
+            <Border Grid.Row="5" 
                     Background="#FF151515" 
                     CornerRadius="8" 
                     Padding="8">
