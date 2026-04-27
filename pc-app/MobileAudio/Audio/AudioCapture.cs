@@ -14,7 +14,7 @@ public class AudioCapture : IDisposable
     private readonly int _bitsPerSample;
     private readonly int _frameDurationMs;
     private readonly int _frameSize;
-    private readonly Thread _readThread;
+    private Thread? _readThread;
     private readonly object _lock = new();
     private bool _running;
     private bool _needsConversion;
@@ -30,13 +30,22 @@ public class AudioCapture : IDisposable
         _bitsPerSample = bitsPerSample;
         _frameDurationMs = frameDurationMs;
         _frameSize = sampleRate * channels * (bitsPerSample / 8) * frameDurationMs / 1000;
-        _readThread = new Thread(ReadLoop) { IsBackground = true, Priority = ThreadPriority.Highest };
         Console.WriteLine($"[AudioCapture] FrameSize={_frameSize} bytes ({frameDurationMs}ms), TargetFormat={sampleRate}Hz/{bitsPerSample}bit/{channels}ch");
     }
 
     public void Start()
     {
         if (_running) return;
+
+        // Ensure previous thread has fully terminated
+        if (_readThread != null && _readThread.IsAlive)
+        {
+            Console.WriteLine("[AudioCapture] Waiting for previous thread to finish...");
+            _running = false;
+            _readThread.Join(TimeSpan.FromSeconds(2));
+            _readThread = null;
+        }
+
         _capture = new WasapiLoopbackCapture();
         var fmt = _capture.WaveFormat;
         _needsConversion = fmt.SampleRate != _sampleRate || fmt.Channels != _channels || fmt.BitsPerSample != _bitsPerSample;
@@ -54,7 +63,6 @@ public class AudioCapture : IDisposable
         {
             try
             {
-                // For 32-bit float -> 16-bit conversion, use WaveFloatTo16Provider (simpler, no artifacts)
                 _resampler = new WaveFloatTo16Provider(_sourceBuffer);
                 Console.WriteLine("[AudioCapture] WaveFloatTo16Provider created");
             }
@@ -68,8 +76,11 @@ public class AudioCapture : IDisposable
         _capture.DataAvailable += OnDataAvailable;
         _capture.RecordingStopped += OnRecordingStopped;
         _capture.StartRecording();
+
         _running = true;
+        _readThread = new Thread(ReadLoop) { IsBackground = true, Priority = ThreadPriority.Highest };
         _readThread.Start();
+
         CaptureStarted?.Invoke(this, EventArgs.Empty);
         Console.WriteLine("[AudioCapture] Started");
     }
@@ -78,14 +89,29 @@ public class AudioCapture : IDisposable
     {
         Console.WriteLine("[AudioCapture] Stopping...");
         _running = false;
+
         _capture?.StopRecording();
+
+        // Wait for read thread to finish
+        if (_readThread != null && _readThread.IsAlive)
+        {
+            _readThread.Join(TimeSpan.FromSeconds(3));
+            if (_readThread.IsAlive)
+            {
+                Console.WriteLine("[AudioCapture] WARNING: Read thread did not terminate gracefully");
+            }
+        }
+        _readThread = null;
+
         lock (_lock)
         {
             _capture?.Dispose();
             _capture = null;
             (_resampler as IDisposable)?.Dispose();
             _resampler = null;
+            _sourceBuffer = null;
         }
+
         CaptureStopped?.Invoke(this, EventArgs.Empty);
         Console.WriteLine("[AudioCapture] Stopped");
     }
@@ -198,7 +224,6 @@ public class AudioCapture : IDisposable
                     if (frameCount % 100 == 0)
                         Console.WriteLine($"[AudioCapture] Frames captured: {frameCount}");
                     FrameCaptured?.Invoke(this, frame);
-                    // Schedule next frame at exact real-time interval
                     nextFrameTime = nextFrameTime.AddMilliseconds(_frameDurationMs);
                     var sleepMs = (int)(nextFrameTime - DateTime.UtcNow).TotalMilliseconds;
                     if (sleepMs > 0)
