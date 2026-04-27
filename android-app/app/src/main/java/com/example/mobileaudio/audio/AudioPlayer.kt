@@ -4,44 +4,38 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.util.Log
-import com.example.mobileaudio.network.NetworkConstants
 
 /**
- * Low-latency audio playback using [AudioTrack] in streaming mode.
- *
- * Call [start] before writing audio data, and [stop] to release resources.
+ * Low-latency PCM audio playback using [AudioTrack] in streaming mode.
  */
 class AudioPlayer {
-
     companion object {
         private const val TAG = "AudioPlayer"
-        private const val BUFFER_DURATION_MS = 20
+        const val SAMPLE_RATE = 48000
+        const val BYTES_PER_FRAME = 4  // 2 channels * 2 bytes (16-bit)
     }
 
     private var audioTrack: AudioTrack? = null
-
-    val isActive: Boolean
-        get() = audioTrack?.playState == AudioTrack.PLAYSTATE_PLAYING
+    private var bufferSizeInFrames: Int = 0
 
     /**
-     * Initializes and starts the [AudioTrack] if not already active.
+     * Creates and starts the [AudioTrack]. Uses a ~10 ms buffer
+     * (tight but stable on modern devices with [PERFORMANCE_MODE_LOW_LATENCY]).
      */
     fun start() {
-        if (isActive) return
+        if (audioTrack != null) return
+        try {
+            val minBuffer = AudioTrack.getMinBufferSize(
+                SAMPLE_RATE,
+                AudioFormat.CHANNEL_OUT_STEREO,
+                AudioFormat.ENCODING_PCM_16BIT
+            )
 
-        val encoding = AudioFormat.ENCODING_PCM_16BIT
-        val channelMask = AudioFormat.CHANNEL_OUT_STEREO
-        val bytesPerFrame = NetworkConstants.CHANNELS * (NetworkConstants.BITS_PER_SAMPLE / 8)
+            // ~10 ms, but never below the platform minimum
+            val desiredFrames = (SAMPLE_RATE * 10 / 1000).coerceAtLeast(minBuffer / BYTES_PER_FRAME)
+            bufferSizeInFrames = desiredFrames
 
-        val minBufferBytes = AudioTrack.getMinBufferSize(
-            NetworkConstants.SAMPLE_RATE, channelMask, encoding
-        )
-        val desiredFrames = (NetworkConstants.SAMPLE_RATE * BUFFER_DURATION_MS / 1000)
-            .coerceAtLeast(minBufferBytes / bytesPerFrame)
-        val bufferBytes = desiredFrames * bytesPerFrame
-
-        audioTrack = try {
-            AudioTrack.Builder()
+            audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -50,44 +44,48 @@ class AudioPlayer {
                 )
                 .setAudioFormat(
                     AudioFormat.Builder()
-                        .setSampleRate(NetworkConstants.SAMPLE_RATE)
-                        .setEncoding(encoding)
-                        .setChannelMask(channelMask)
+                        .setSampleRate(SAMPLE_RATE)
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                         .build()
                 )
-                .setBufferSizeInBytes(bufferBytes)
+                .setBufferSizeInBytes(desiredFrames * BYTES_PER_FRAME)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                 .build()
-                .also { it.play() }
+
+            audioTrack?.play()
+            Log.d(TAG, "AudioTrack started, buffer=${desiredFrames} frames (${desiredFrames * 1000 / SAMPLE_RATE}ms)")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to create AudioTrack: ${e.message}")
-            null
+            Log.e(TAG, "Failed to start AudioTrack: ${e.message}")
         }
     }
 
     /**
-     * Writes PCM data to the active [AudioTrack].
-     *
-     * @return the total number of bytes written, or `-1` if the track is not initialized.
+     * Returns the number of bytes that can be written without blocking,
+     * or -1 if the track is not initialized.
      */
-    fun write(data: ByteArray, offset: Int = 0, length: Int = data.size): Int {
+    fun availableBufferSize(): Int {
+        val track = audioTrack ?: return -1
+        // AudioTrack doesn't expose exact fill level; return total buffer size as conservative estimate.
+        return bufferSizeInFrames * BYTES_PER_FRAME
+    }
+
+    /** Writes [length] bytes from [data] starting at [offset]. Returns bytes written or error code. */
+    fun write(data: ByteArray, offset: Int, length: Int): Int {
         val track = audioTrack ?: return -1
         return track.write(data, offset, length)
     }
 
-    /**
-     * Stops playback and releases the underlying [AudioTrack]. Safe to call multiple times.
-     */
+    /** Stops playback and releases resources. Safe to call multiple times. */
     fun stop() {
-        val track = audioTrack ?: return
-        audioTrack = null
+        Log.d(TAG, "Stopping AudioTrack")
         try {
-            track.stop()
+            audioTrack?.stop()
         } catch (_: Exception) {
-            // Ignore — track may already be in an invalid state.
+            // Ignore
         }
-        track.release()
+        audioTrack?.release()
+        audioTrack = null
     }
 }
-

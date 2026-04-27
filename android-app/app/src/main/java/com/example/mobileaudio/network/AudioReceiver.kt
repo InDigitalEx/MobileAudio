@@ -65,13 +65,19 @@ class AudioReceiver(
     private val targetJitterBytes: Int
         get() = latencyMs * NetworkConstants.BYTES_PER_MS
 
+    /**
+     * Maximum buffer size is now tied to the user's latency setting.
+     * We allow 1.5x headroom above the target to absorb network jitter,
+     * but never exceed the absolute hardware ceiling.
+     */
     private val maxJitterBytes: Int
-        get() = NetworkConstants.MAX_LATENCY_MS * NetworkConstants.BYTES_PER_MS
+        get() = (latencyMs * 15 / 10).coerceAtLeast(latencyMs + 10)
+            .coerceIn(latencyMs, NetworkConstants.MAX_LATENCY_MS) * NetworkConstants.BYTES_PER_MS
 
-    /** Updates the target latency. Takes effect on the next buffer pre-fill. */
+    /** Updates the target latency. Takes effect immediately on the buffer ceiling. */
     fun setLatency(ms: Int) {
         latencyMs = ms.coerceIn(10, NetworkConstants.MAX_LATENCY_MS)
-        Log.d(TAG, "Latency set to ${latencyMs}ms")
+        Log.d(TAG, "Latency set to ${latencyMs}ms (max buffer=${maxJitterBytes / NetworkConstants.BYTES_PER_MS}ms)")
     }
 
     /** Starts receiving audio from [pcIp]:[port]. */
@@ -82,7 +88,7 @@ class AudioReceiver(
         }
 
         resetState()
-        Log.d(TAG, "Starting receiver on port $port")
+        Log.d(TAG, "Starting receiver on port $port (target=${latencyMs}ms)")
 
         receiveJob = scope.launch {
             var socket: DatagramSocket? = null

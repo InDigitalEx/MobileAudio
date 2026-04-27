@@ -61,7 +61,7 @@ public sealed class AudioCapture : IDisposable
 
         _sourceBuffer = new BufferedWaveProvider(fmt)
         {
-            BufferLength = fmt.AverageBytesPerSecond * 2,
+            BufferLength = fmt.AverageBytesPerSecond / 10, // ~100ms
             DiscardOnBufferOverflow = true
         };
 
@@ -72,7 +72,7 @@ public sealed class AudioCapture : IDisposable
 
             _convertedBuffer = new BufferedWaveProvider(targetFormat)
             {
-                BufferLength = targetFormat.AverageBytesPerSecond * 2,
+                BufferLength = targetFormat.AverageBytesPerSecond / 10, // ~100ms
                 DiscardOnBufferOverflow = true
             };
 
