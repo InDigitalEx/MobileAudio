@@ -14,7 +14,8 @@ public sealed class AudioCapture : IDisposable
 {
     private WasapiLoopbackCapture? _capture;
     private BufferedWaveProvider? _sourceBuffer;
-    private IWaveProvider? _converter;
+    private BufferedWaveProvider? _convertedBuffer;
+    private FastResampler? _resampler;
     private Thread? _readThread;
     private readonly object _lock = new();
     private bool _running;
@@ -22,6 +23,8 @@ public sealed class AudioCapture : IDisposable
     private readonly int _frameSize;
     private readonly int _frameDurationMs;
     private readonly AudioSettings _settings;
+
+    private readonly byte[] _convertBuffer = new byte[65536];
 
     public event EventHandler? CaptureStopped;
     public event EventHandler? CaptureStarted;
@@ -49,9 +52,12 @@ public sealed class AudioCapture : IDisposable
 
         _capture = new WasapiLoopbackCapture();
         var fmt = _capture.WaveFormat;
-        bool needsConversion = fmt.Encoding == WaveFormatEncoding.IeeeFloat;
+        bool needsConversion = fmt.SampleRate != _settings.SampleRate ||
+                               fmt.Channels != _settings.Channels ||
+                               fmt.BitsPerSample != _settings.BitsPerSample ||
+                               fmt.Encoding != WaveFormatEncoding.Pcm;
 
-        Debug.WriteLine($"[AudioCapture] System format: {fmt}, needsConversion={needsConversion}");
+        Debug.WriteLine($"[AudioCapture] System format: {fmt} → Target: {_settings.SampleRate}Hz/{_settings.BitsPerSample}bit/{_settings.Channels}ch, needsConversion={needsConversion}");
 
         _sourceBuffer = new BufferedWaveProvider(fmt)
         {
@@ -61,15 +67,16 @@ public sealed class AudioCapture : IDisposable
 
         if (needsConversion)
         {
-            // WaveFloatTo16Provider converts IEEE float -> 16-bit PCM.
-            // It does NOT resample; system must already be at the target sample rate.
-            if (fmt.SampleRate != _settings.SampleRate || fmt.Channels != _settings.Channels)
+            var targetFormat = new WaveFormat(_settings.SampleRate, _settings.BitsPerSample, _settings.Channels);
+            _resampler = new FastResampler(fmt, targetFormat);
+
+            _convertedBuffer = new BufferedWaveProvider(targetFormat)
             {
-                throw new NotSupportedException(
-                    $"System audio format ({fmt.SampleRate}Hz/{fmt.Channels}ch) does not match target " +
-                    $"({_settings.SampleRate}Hz/{_settings.Channels}ch). Please set system audio to the target format.");
-            }
-            _converter = new WaveFloatTo16Provider(_sourceBuffer);
+                BufferLength = targetFormat.AverageBytesPerSecond * 2,
+                DiscardOnBufferOverflow = true
+            };
+
+            Debug.WriteLine($"[AudioCapture] FastResampler initialized");
         }
 
         _capture.DataAvailable += OnDataAvailable;
@@ -109,9 +116,9 @@ public sealed class AudioCapture : IDisposable
         {
             _capture?.Dispose();
             _capture = null;
-            (_converter as IDisposable)?.Dispose();
-            _converter = null;
             _sourceBuffer = null;
+            _convertedBuffer = null;
+            _resampler = null;
         }
 
         CaptureStopped?.Invoke(this, EventArgs.Empty);
@@ -122,7 +129,7 @@ public sealed class AudioCapture : IDisposable
     {
         lock (_lock)
         {
-            var provider = _converter ?? _sourceBuffer;
+            var provider = _convertedBuffer ?? _sourceBuffer;
             if (provider == null) return null;
 
             var frame = new byte[_frameSize];
@@ -192,7 +199,18 @@ public sealed class AudioCapture : IDisposable
     {
         lock (_lock)
         {
-            _sourceBuffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+            if (_resampler != null && _convertedBuffer != null)
+            {
+                int outputBytes = _resampler.Process(e.Buffer, e.BytesRecorded, _convertBuffer);
+                if (outputBytes > 0)
+                {
+                    _convertedBuffer.AddSamples(_convertBuffer, 0, outputBytes);
+                }
+            }
+            else
+            {
+                _sourceBuffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
+            }
         }
     }
 
@@ -249,4 +267,3 @@ public sealed class AudioCapture : IDisposable
         Stop();
     }
 }
-
