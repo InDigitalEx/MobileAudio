@@ -14,6 +14,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
+private val ColorLow = Color(0xFF00897B)
+private val ColorHigh = Color(0xFF00E5FF)
+
+/**
+ * Animated audio visualizer with [barCount] bars.
+ *
+ * When [isPlaying] is `true`, bars animate randomly to simulate audio activity.
+ * When `false`, bars collapse to a minimal idle state.
+ */
 @Composable
 fun AudioVisualizer(
     isPlaying: Boolean,
@@ -25,19 +34,23 @@ fun AudioVisualizer(
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
             while (true) {
-                bars.forEach { bar ->
+                val targetValues = List(barCount) { Random.nextFloat() * 0.8f + 0.1f }
+                val jobs = bars.mapIndexed { index, bar ->
                     launch {
                         bar.animateTo(
-                            targetValue = Random.nextFloat() * 0.8f + 0.1f,
+                            targetValue = targetValues[index],
                             animationSpec = tween(150, easing = FastOutSlowInEasing)
                         )
                     }
                 }
+                jobs.forEach { it.join() }
                 delay(100)
             }
         } else {
             bars.forEach { bar ->
-                bar.animateTo(0.1f, tween(300))
+                launch {
+                    bar.animateTo(0.1f, tween(300))
+                }
             }
         }
     }
@@ -50,15 +63,14 @@ fun AudioVisualizer(
         verticalAlignment = Alignment.Bottom
     ) {
         bars.forEach { bar ->
+            val height = bar.value
+            val color = if (height > 0.6f) ColorHigh else ColorLow
             Box(
                 modifier = Modifier
                     .width(4.dp)
-                    .fillMaxHeight(bar.value)
+                    .fillMaxHeight(fraction = height)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(
-                        if (bar.value > 0.6f) Color(0xFF00E5FF)
-                        else Color(0xFF00897B)
-                    )
+                    .background(color)
             )
         }
     }

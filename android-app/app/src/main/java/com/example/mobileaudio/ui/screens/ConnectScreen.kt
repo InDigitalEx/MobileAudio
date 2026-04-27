@@ -1,9 +1,9 @@
 package com.example.mobileaudio.ui.screens
 
-import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -11,12 +11,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.mobileaudio.network.DiscoveredPc
 import com.example.mobileaudio.network.DiscoveryListener
 import com.example.mobileaudio.ui.theme.Teal40
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,7 +26,6 @@ fun ConnectScreen(
     var ipAddress by remember { mutableStateOf("") }
     var discoveredPcs by remember { mutableStateOf<List<DiscoveredPc>>(emptyList()) }
     var isSearching by remember { mutableStateOf(true) }
-    val scope = rememberCoroutineScope()
     val discoveryListener = remember { DiscoveryListener(context) }
 
     DisposableEffect(Unit) {
@@ -35,9 +33,7 @@ fun ConnectScreen(
             discoveredPcs = devices
             isSearching = devices.isEmpty()
         }
-        onDispose {
-            discoveryListener.stop()
-        }
+        onDispose { discoveryListener.stop() }
     }
 
     Column(
@@ -62,7 +58,6 @@ fun ConnectScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Discovered devices list
         Text(
             text = "Найденные компьютеры",
             style = MaterialTheme.typography.titleMedium,
@@ -85,46 +80,9 @@ fun ConnectScreen(
                     .padding(12.dp)
             ) {
                 when {
-                    isSearching && discoveredPcs.isEmpty() -> {
-                        Column(
-                            modifier = Modifier.align(Alignment.Center),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(40.dp),
-                                color = Teal40,
-                                strokeWidth = 3.dp
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "Поиск устройств в сети...",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-                    discoveredPcs.isEmpty() -> {
-                        Text(
-                            text = "Устройства не найдены.\\nУбедитесь, что PC-приложение запущено и оба устройства в одной сети.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                            modifier = Modifier.align(Alignment.Center),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
-                    else -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            discoveredPcs.forEach { pc ->
-                                DiscoveredPcCard(
-                                    pc = pc,
-                                    onClick = { onConnect(pc.ipAddress) }
-                                )
-                            }
-                        }
-                    }
+                    isSearching && discoveredPcs.isEmpty() -> SearchingIndicator()
+                    discoveredPcs.isEmpty() -> EmptyDevicesMessage()
+                    else -> DevicesList(devices = discoveredPcs, onConnect = onConnect)
                 }
             }
         }
@@ -152,11 +110,7 @@ fun ConnectScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         Button(
-            onClick = {
-                if (ipAddress.isNotBlank()) {
-                    onConnect(ipAddress)
-                }
-            },
+            onClick = { if (ipAddress.isNotBlank()) onConnect(ipAddress) },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
@@ -165,6 +119,54 @@ fun ConnectScreen(
             enabled = ipAddress.isNotBlank()
         ) {
             Text("ПОДКЛЮЧИТЬСЯ", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@Composable
+private fun SearchingIndicator() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(40.dp),
+            color = Teal40,
+            strokeWidth = 3.dp
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "Поиск устройств в сети...",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+        )
+    }
+}
+
+@Composable
+private fun EmptyDevicesMessage() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            text = "Устройства не найдены.\nУбедитесь, что PC-приложение запущено и оба устройства в одной сети.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun DevicesList(
+    devices: List<DiscoveredPc>,
+    onConnect: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        devices.forEach { pc ->
+            DiscoveredPcCard(pc = pc, onClick = { onConnect(pc.ipAddress) })
         }
     }
 }
@@ -202,7 +204,7 @@ private fun DiscoveredPcCard(
                 )
             }
             Icon(
-                imageVector = androidx.compose.material.icons.Icons.Default.PlayArrow,
+                imageVector = Icons.Default.PlayArrow,
                 contentDescription = "Подключиться",
                 tint = Teal40,
                 modifier = Modifier.size(28.dp)

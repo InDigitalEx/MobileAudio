@@ -1,36 +1,45 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using MobileAudio.Helpers;
 
 namespace MobileAudio.Audio;
 
-public class DiscoveredDevice
-{
-    public string DeviceType { get; set; } = "";
-    public string DeviceName { get; set; } = "";
-    public string IpAddress { get; set; } = "";
-    public int AudioPort { get; set; }
-    public DateTime LastSeen { get; set; }
-}
+/// <summary>
+/// Immutable representation of a discovered network device.
+/// </summary>
+public sealed record DiscoveredDevice(
+    string DeviceType,
+    string DeviceName,
+    string IpAddress,
+    int AudioPort,
+    DateTime LastSeen
+);
 
-public class DiscoveryService : IDisposable
+/// <summary>
+/// Broadcasts and listens for device-discovery messages on the local network.
+/// </summary>
+public sealed class DiscoveryService : IDisposable
 {
     private UdpClient? _udpClient;
     private CancellationTokenSource? _cts;
-    private readonly int _discoveryPort;
-    private readonly int _audioPort;
     private Task? _listenTask;
     private Task? _broadcastTask;
-    public bool IsRunning => _cts != null && !_cts.IsCancellationRequested;
+
+    private readonly int _discoveryPort;
+    private readonly int _audioPort;
+    private readonly string _deviceName;
+    private const string DeviceType = "MobileAudioPC";
+    private static readonly TimeSpan StaleTimeout = TimeSpan.FromSeconds(10);
 
     private readonly ConcurrentDictionary<string, DiscoveredDevice> _discoveredDevices = new();
-    private readonly string _deviceName;
-    private readonly string _deviceType = "MobileAudioPC";
 
+    public bool IsRunning => _cts is { IsCancellationRequested: false };
     public event EventHandler<List<DiscoveredDevice>>? DevicesUpdated;
 
     public DiscoveryService(int discoveryPort = 5001, int audioPort = 5000)
@@ -43,6 +52,7 @@ public class DiscoveryService : IDisposable
     public void Start()
     {
         if (IsRunning) return;
+
         _cts = new CancellationTokenSource();
         _udpClient = new UdpClient();
         _udpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
@@ -53,14 +63,27 @@ public class DiscoveryService : IDisposable
         _broadcastTask = Task.Run(() => BroadcastLoop(_cts.Token));
     }
 
-    public void Stop()
+    public async Task StopAsync()
     {
-        _cts?.Cancel();
+        if (_cts == null) return;
+
+        _cts.Cancel();
         _udpClient?.Close();
+
+        if (_listenTask != null)
+            await _listenTask.ConfigureAwait(false);
+        if (_broadcastTask != null)
+            await _broadcastTask.ConfigureAwait(false);
+
         _udpClient?.Dispose();
         _udpClient = null;
-        _cts?.Dispose();
+        _cts.Dispose();
         _cts = null;
+    }
+
+    public void Stop()
+    {
+        _ = StopAsync();
     }
 
     public List<DiscoveredDevice> GetDiscoveredPhones()
@@ -72,10 +95,10 @@ public class DiscoveryService : IDisposable
             .ToList();
     }
 
-    private void BroadcastLoop(CancellationToken token)
+    private async Task BroadcastLoop(CancellationToken token)
     {
-        var localIp = GetLocalIpAddress();
-        var message = $"HELLO|{_deviceType}|{_deviceName}|{localIp}|{_audioPort}";
+        var localIp = NetworkHelper.GetLocalIpAddress();
+        var message = $"HELLO|{DeviceType}|{_deviceName}|{localIp}|{_audioPort}";
         var bytes = Encoding.UTF8.GetBytes(message);
 
         while (!token.IsCancellationRequested)
@@ -85,26 +108,25 @@ public class DiscoveryService : IDisposable
                 var broadcastEp = new IPEndPoint(IPAddress.Broadcast, _discoveryPort);
                 _udpClient?.Send(bytes, bytes.Length, broadcastEp);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DiscoveryService] Broadcast failed: {ex.Message}");
+            }
+
+            CleanStaleDevices();
 
             try
             {
-                // Clean up stale devices
-                var cutoff = DateTime.Now.AddSeconds(-10);
-                var stale = _discoveredDevices.Where(kv => kv.Value.LastSeen < cutoff).Select(kv => kv.Key).ToList();
-                foreach (var key in stale)
-                    _discoveredDevices.TryRemove(key, out _);
-
-                if (stale.Count > 0)
-                    NotifyDevicesUpdated();
+                await Task.Delay(2000, token);
             }
-            catch { }
-
-            Thread.Sleep(2000);
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
     }
 
-    private void ListenLoop(CancellationToken token)
+    private async Task ListenLoop(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
@@ -112,68 +134,73 @@ public class DiscoveryService : IDisposable
             {
                 if (_udpClient == null) continue;
                 var remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
-                var data = _udpClient.Receive(ref remoteEndPoint);
-                var message = Encoding.UTF8.GetString(data).Trim();
-
-                if (message.StartsWith("HELLO|"))
-                {
-                    var parts = message.Split('|');
-                    if (parts.Length >= 5)
-                    {
-                        var deviceType = parts[1];
-                        var deviceName = parts[2];
-                        var ip = parts[3];
-                        var port = int.TryParse(parts[4], out var p) ? p : 5000;
-
-                        // Don't add ourselves
-                        if (deviceType == _deviceType) continue;
-
-                        var device = new DiscoveredDevice
-                        {
-                            DeviceType = deviceType,
-                            DeviceName = deviceName,
-                            IpAddress = ip,
-                            AudioPort = port,
-                            LastSeen = DateTime.Now
-                        };
-
-                        _discoveredDevices[ip] = device;
-                        NotifyDevicesUpdated();
-                    }
-                }
+                var data = await _udpClient.ReceiveAsync(token);
+                var message = Encoding.UTF8.GetString(data.Buffer).Trim();
+                ProcessMessage(message);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
             catch (ObjectDisposedException)
             {
                 break;
             }
-            catch (SocketException)
+            catch (SocketException ex) when (ex.SocketErrorCode == SocketError.Interrupted)
             {
-                if (token.IsCancellationRequested) break;
+                break;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DiscoveryService] Listen error: {ex.Message}");
+            }
         }
+    }
+
+    private void ProcessMessage(string message)
+    {
+        if (!message.StartsWith("HELLO|")) return;
+
+        var parts = message.Split('|');
+        if (parts.Length < 5) return;
+
+        var deviceType = parts[1];
+        if (deviceType == DeviceType) return; // Ignore ourselves
+
+        var deviceName = parts[2];
+        var ip = parts[3];
+        var port = int.TryParse(parts[4], out var p) ? p : 5000;
+
+        var device = new DiscoveredDevice(
+            DeviceType: deviceType,
+            DeviceName: deviceName,
+            IpAddress: ip,
+            AudioPort: port,
+            LastSeen: DateTime.Now
+        );
+
+        _discoveredDevices[ip] = device;
+        NotifyDevicesUpdated();
+    }
+
+    private void CleanStaleDevices()
+    {
+        var cutoff = DateTime.Now.AddSeconds(-10);
+        var staleKeys = _discoveredDevices
+            .Where(kv => kv.Value.LastSeen < cutoff)
+            .Select(kv => kv.Key)
+            .ToList();
+
+        foreach (var key in staleKeys)
+            _discoveredDevices.TryRemove(key, out _);
+
+        if (staleKeys.Count > 0)
+            NotifyDevicesUpdated();
     }
 
     private void NotifyDevicesUpdated()
     {
         DevicesUpdated?.Invoke(this, GetDiscoveredPhones());
-    }
-
-    private static string GetLocalIpAddress()
-    {
-        try
-        {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            foreach (var ip in host.AddressList)
-            {
-                if (ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip))
-                {
-                    return ip.ToString();
-                }
-            }
-        }
-        catch { }
-        return "127.0.0.1";
     }
 
     public void Dispose()

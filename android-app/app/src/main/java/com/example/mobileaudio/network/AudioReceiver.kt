@@ -2,6 +2,7 @@ package com.example.mobileaudio.network
 
 import android.util.Log
 import com.example.mobileaudio.audio.AudioPlayer
+import com.example.mobileaudio.audio.JitterBuffer
 import kotlinx.coroutines.*
 import kotlin.coroutines.coroutineContext
 import java.net.DatagramPacket
@@ -9,135 +10,159 @@ import java.net.DatagramSocket
 import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
 import java.nio.ByteBuffer
-import java.util.concurrent.ConcurrentLinkedQueue
 
+/**
+ * Receives audio over UDP, manages a jitter buffer, and plays back via [AudioPlayer].
+ *
+ * @param onConnected Invoked on the main thread when streaming begins.
+ * @param onDisconnected Invoked on the main thread when streaming ends.
+ * @param onStatsUpdate Invoked on the main thread with periodic [AudioStats].
+ * @param targetLatencyMs Desired buffer latency in milliseconds (10–100).
+ */
 class AudioReceiver(
-    private val onConnected: () -> Unit,
-    private val onDisconnected: () -> Unit,
-    private val onStatsUpdate: (Int, Int) -> Unit,
-    private var targetLatencyMs: Int = 30
+    private val onConnected: () -> Unit = {},
+    private val onDisconnected: () -> Unit = {},
+    private val onStatsUpdate: (AudioStats) -> Unit = {},
+    targetLatencyMs: Int = 30
 ) {
+
     companion object {
         private const val TAG = "AudioReceiver"
-        // 48kHz stereo 16bit = 192000 bytes/sec
-        // 3ms frame = 576 bytes
-        private const val BYTES_PER_MS = 192
-        private const val MAX_LATENCY_MS = 100        // drop packets if latency exceeds 100ms
-        private const val SILENCE_INSERT_THRESHOLD = 20  // insert silence for up to 20 empty cycles (~100ms)
+        private const val RECEIVE_BUFFER_SIZE = 4096
+        private const val PLAYBACK_DELAY_MS = 5L
+        private const val STATS_INTERVAL_PACKETS = 100
     }
 
-    private var socket: DatagramSocket? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var receiveJob: Job? = null
     private var playJob: Job? = null
+
     private val audioPlayer = AudioPlayer()
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val jitterBuffer = JitterBuffer()
 
-    private val jitterBuffer = ConcurrentLinkedQueue<ByteArray>()
-    private var expectedSequence = 0u
-    private var packetsReceived = 0
-    private var packetsLost = 0
-    private var bytesWritten = 0
-    private var isPlaying = false
-
-    // Dynamic latency settings
-    private val targetJitterBytes: Int get() = targetLatencyMs * BYTES_PER_MS
-    private val maxJitterBytes: Int get() = MAX_LATENCY_MS * BYTES_PER_MS
-    private val frameSize: Int get() = targetLatencyMs * BYTES_PER_MS / 10  // approximate
-
-    fun setLatency(latencyMs: Int) {
-        targetLatencyMs = latencyMs.coerceIn(10, 100)
-        Log.d(TAG, "Latency set to ${targetLatencyMs}ms")
+    private val silenceFrame: ByteArray by lazy {
+        ByteArray(NetworkConstants.BYTES_PER_MS * 3) // ~3ms silence
     }
 
-    fun getLatency(): Int = targetLatencyMs
+    @Volatile
+    private var isPlaying = false
 
-    fun start(pcIp: String, port: Int = 5000) {
+    @Volatile
+    private var expectedSequence = 0u
+
+    private var packetsReceived = 0
+    private var packetsLost = 0
+
+    @Volatile
+    var latencyMs: Int = targetLatencyMs.coerceIn(10, NetworkConstants.MAX_LATENCY_MS)
+        private set
+
+    private val targetJitterBytes: Int
+        get() = latencyMs * NetworkConstants.BYTES_PER_MS
+
+    private val maxJitterBytes: Int
+        get() = NetworkConstants.MAX_LATENCY_MS * NetworkConstants.BYTES_PER_MS
+
+    /** Updates the target latency. Takes effect on the next buffer pre-fill. */
+    fun setLatency(ms: Int) {
+        latencyMs = ms.coerceIn(10, NetworkConstants.MAX_LATENCY_MS)
+        Log.d(TAG, "Latency set to ${latencyMs}ms")
+    }
+
+    /** Starts receiving audio from [pcIp]:[port]. */
+    fun start(pcIp: String, port: Int = NetworkConstants.UDP_PORT) {
+        if (receiveJob?.isActive == true) {
+            Log.w(TAG, "Already running, ignoring start() call")
+            return
+        }
+
+        resetState()
         Log.d(TAG, "Starting receiver on port $port")
-        stop()
 
         receiveJob = scope.launch {
+            var socket: DatagramSocket? = null
             try {
                 socket = DatagramSocket(null).apply {
                     reuseAddress = true
                     bind(InetSocketAddress(port))
-                    soTimeout = 3000
+                    soTimeout = NetworkConstants.SOCKET_TIMEOUT_MS
                 }
                 Log.d(TAG, "Socket bound to port $port")
 
                 audioPlayer.start()
-
                 withContext(Dispatchers.Main) { onConnected() }
 
-                // Start playback coroutine
                 playJob = launch { playbackLoop() }
 
-                val buffer = ByteArray(4096)
+                val buffer = ByteArray(RECEIVE_BUFFER_SIZE)
                 var timeoutCount = 0
+
                 while (isActive) {
                     try {
                         val packet = DatagramPacket(buffer, buffer.size)
-                        socket?.receive(packet)
+                        socket.receive(packet)
                         processPacket(packet)
                         timeoutCount = 0
                     } catch (_: SocketTimeoutException) {
                         timeoutCount++
                         if (timeoutCount % 10 == 0) {
-                            Log.d(TAG, "No packets received for ${timeoutCount * 3} seconds. Check that PC app is streaming.")
+                            Log.d(TAG, "No packets for ${timeoutCount * 3}s")
                         }
-                        continue
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Receiver error: ${e.message}")
-                e.printStackTrace()
+                if (e !is CancellationException) {
+                    Log.e(TAG, "Receiver error: ${e.message}", e)
+                }
             } finally {
-                withContext(Dispatchers.Main) { onDisconnected() }
-                audioPlayer.stop()
                 socket?.close()
+                withContext(NonCancellable + Dispatchers.Main) { onDisconnected() }
+                audioPlayer.stop()
             }
         }
+    }
+
+    /** Stops receiving and releases all resources. Safe to call multiple times. */
+    fun stop() {
+        Log.d(TAG, "Stopping receiver. Packets: $packetsReceived, Lost: $packetsLost")
+        scope.coroutineContext.cancelChildren()
+        receiveJob = null
+        playJob = null
+        audioPlayer.stop()
+        jitterBuffer.clear()
+        resetState()
+    }
+
+    private fun resetState() {
+        packetsReceived = 0
+        packetsLost = 0
+        expectedSequence = 0u
+        isPlaying = false
     }
 
     private fun processPacket(packet: DatagramPacket) {
         val data = packet.data
         val length = packet.length
-        if (length < 4) {
+        if (length < NetworkConstants.PACKET_HEADER_BYTES) {
             Log.w(TAG, "Packet too short: $length bytes")
             return
         }
 
-        val seq = ByteBuffer.wrap(data, 0, 4).int.toUInt()
+        val seq = ByteBuffer.wrap(data, 0, NetworkConstants.PACKET_HEADER_BYTES).int.toUInt()
         if (seq > expectedSequence && expectedSequence != 0u) {
             packetsLost += (seq - expectedSequence).toInt()
         }
         expectedSequence = seq + 1u
         packetsReceived++
 
-        val audioData = data.copyOfRange(4, length)
+        val audioData = data.copyOfRange(NetworkConstants.PACKET_HEADER_BYTES, length)
+        jitterBuffer.offer(audioData, maxJitterBytes)
 
-        synchronized(jitterBuffer) {
-            var currentSize = jitterBuffer.sumOf { it.size }
-
-            // Hard latency cap: drop oldest packets if we're over max
-            while (currentSize + audioData.size > maxJitterBytes && jitterBuffer.isNotEmpty()) {
-                val dropped = jitterBuffer.poll()
-                if (dropped != null) currentSize -= dropped.size
-            }
-
-            jitterBuffer.offer(audioData)
-            currentSize += audioData.size
-
-            // Log stats
-            if (packetsReceived <= 5 || packetsReceived % 100 == 0) {
-                val latencyMs = currentSize / BYTES_PER_MS
-                val total = packetsReceived + packetsLost
-                val lossPercent = if (total > 0) (packetsLost * 100 / total) else 0
-                Log.d(TAG, "Packet #$packetsReceived, seq=$seq, size=${audioData.size}, " +
-                        "latency=${latencyMs}ms, loss=$lossPercent%")
-                CoroutineScope(Dispatchers.Main).launch {
-                    onStatsUpdate(packetsReceived, lossPercent)
-                }
-            }
+        if (packetsReceived <= 5 || packetsReceived % STATS_INTERVAL_PACKETS == 0) {
+            val stats = jitterBuffer.toStats(packetsReceived, packetsLost)
+            Log.d(TAG, "Packet #$packetsReceived seq=$seq size=${audioData.size} " +
+                    "latency=${stats.latencyMs}ms loss=${stats.lossPercent}%")
+            scope.launch(Dispatchers.Main) { onStatsUpdate(stats) }
         }
     }
 
@@ -145,83 +170,56 @@ class AudioReceiver(
         Log.d(TAG, "Playback loop started")
         var playCount = 0
         var consecutiveEmpty = 0
-        val silenceFrame = ByteArray(576) { 0 }
 
         while (coroutineContext.isActive) {
             val data = synchronized(jitterBuffer) {
-                val bufferSize = jitterBuffer.sumOf { it.size }
-
+                val bufferSize = jitterBuffer.sizeBytes
                 if (!isPlaying) {
-                    // Wait until we have enough data to start
-                    if (bufferSize < targetJitterBytes) {
-                        return@synchronized null
-                    }
+                    if (bufferSize < targetJitterBytes) return@synchronized null
                     isPlaying = true
                     consecutiveEmpty = 0
-                    Log.d(TAG, "Started playing, buffer=${bufferSize / BYTES_PER_MS}ms")
+                    Log.d(TAG, "Started playing, buffer=${bufferSize / NetworkConstants.BYTES_PER_MS}ms")
                 }
 
-                // If buffer is empty, insert silence (PLC) instead of stopping
-                if (bufferSize == 0) {
+                if (jitterBuffer.isEmpty) {
                     consecutiveEmpty++
-                    if (consecutiveEmpty >= SILENCE_INSERT_THRESHOLD) {
-                        // Too many consecutive silences, reset playback state
+                    if (consecutiveEmpty >= NetworkConstants.SILENCE_INSERT_THRESHOLD) {
                         isPlaying = false
                         consecutiveEmpty = 0
                         Log.d(TAG, "Too many underruns, resetting playback")
                         return@synchronized null
                     }
-                    // Return silence frame to prevent AudioTrack gap/click
-                    return@synchronized silenceFrame
+                    return@synchronized silenceFrame.copyOf()
                 }
                 consecutiveEmpty = 0
                 jitterBuffer.poll()
             }
 
-            if (data != null) {
-                // Write all data, handle partial writes
-                var offset = 0
-                while (offset < data.size) {
-                    val written = audioPlayer.write(data, offset, data.size - offset)
-                    if (written > 0) {
-                        offset += written
-                        bytesWritten += written
-                    } else if (written < 0) {
+            if (data == null) {
+                delay(PLAYBACK_DELAY_MS)
+                continue
+            }
+
+            var offset = 0
+            while (offset < data.size) {
+                val written = audioPlayer.write(data, offset, data.size - offset)
+                when {
+                    written > 0 -> offset += written
+                    written < 0 -> {
                         Log.e(TAG, "AudioTrack write error: $written")
                         break
                     }
-                    // If written == 0, AudioTrack buffer is full; yield and retry
-                    if (written == 0) {
-                        delay(1)
-                    }
+                    else -> delay(1) // Buffer full, yield
                 }
+            }
 
-                playCount++
-                if (playCount % 100 == 0) {
-                    val latency = synchronized(jitterBuffer) { jitterBuffer.sumOf { it.size } / BYTES_PER_MS }
-                    Log.d(TAG, "Played $playCount chunks, latency=${latency}ms")
-                }
-            } else {
-                // Waiting for enough data to start
-                delay(5)
+            playCount++
+            if (playCount % STATS_INTERVAL_PACKETS == 0) {
+                val latency = jitterBuffer.sizeBytes / NetworkConstants.BYTES_PER_MS
+                Log.d(TAG, "Played $playCount chunks, latency=${latency}ms")
             }
         }
         Log.d(TAG, "Playback loop ended")
     }
-
-    fun stop() {
-        Log.d(TAG, "Stopping receiver. Packets: $packetsReceived, Bytes written: $bytesWritten")
-        receiveJob?.cancel()
-        playJob?.cancel()
-        socket?.close()
-        audioPlayer.stop()
-        synchronized(jitterBuffer) {
-            jitterBuffer.clear()
-        }
-        packetsReceived = 0
-        packetsLost = 0
-        bytesWritten = 0
-        expectedSequence = 0u
-        isPlaying = false
-    }
 }
+

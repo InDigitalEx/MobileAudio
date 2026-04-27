@@ -1,11 +1,16 @@
 using System;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using MobileAudio.Helpers;
 using MobileAudio.Models;
 
 namespace MobileAudio.Audio;
 
-public class UdpStreamer : IDisposable
+/// <summary>
+/// Streams audio frames via UDP to a target endpoint.
+/// </summary>
+public sealed class UdpStreamer : IDisposable
 {
     private UdpClient? _udpClient;
     private IPEndPoint? _targetEndPoint;
@@ -13,7 +18,6 @@ public class UdpStreamer : IDisposable
     private uint _sequenceNumber;
     private bool _running;
     private int _framesSent;
-    private DateTime _lastLogTime;
 
     public bool IsStreaming => _running;
     public event EventHandler? Started;
@@ -27,24 +31,26 @@ public class UdpStreamer : IDisposable
     public void Start(string targetIp, int port)
     {
         if (_running) return;
-        try
+
+        if (!IPAddress.TryParse(targetIp, out var ipAddress))
         {
-            _targetEndPoint = new IPEndPoint(IPAddress.Parse(targetIp), port);
+            throw new ArgumentException($"Invalid IP address: '{targetIp}'", nameof(targetIp));
         }
-        catch (Exception ex)
+
+        _targetEndPoint = new IPEndPoint(ipAddress, port);
+        _udpClient = new UdpClient
         {
-            Console.WriteLine($"[UdpStreamer] ERROR: Invalid IP address '{targetIp}': {ex.Message}");
-            throw;
-        }
-        _udpClient = new UdpClient();
-        _udpClient.Client.SendBufferSize = _settings.BufferSize * 10;
+            Client =
+            {
+                SendBufferSize = _settings.BufferSize * 10
+            }
+        };
         _sequenceNumber = 0;
         _framesSent = 0;
-        _lastLogTime = DateTime.Now;
         _running = true;
+
         Started?.Invoke(this, EventArgs.Empty);
-        Console.WriteLine($"[UdpStreamer] Started streaming to {targetIp}:{port}");
-        Console.WriteLine($"[UdpStreamer] Target endpoint: {_targetEndPoint}");
+        Debug.WriteLine($"[UdpStreamer] Started streaming to {targetIp}:{port}");
     }
 
     public void SendFrame(byte[] frame)
@@ -52,10 +58,7 @@ public class UdpStreamer : IDisposable
         if (!_running || _udpClient == null || _targetEndPoint == null) return;
 
         var packet = new byte[4 + frame.Length];
-        var seqBytes = BitConverter.GetBytes(_sequenceNumber++);
-        if (BitConverter.IsLittleEndian)
-            Array.Reverse(seqBytes);
-        seqBytes.CopyTo(packet, 0);
+        packet.WriteUInt32BigEndian(_sequenceNumber++);
         frame.CopyTo(packet, 4);
 
         try
@@ -65,28 +68,31 @@ public class UdpStreamer : IDisposable
 
             if (_framesSent <= 5 || _framesSent % 100 == 0)
             {
-                Console.WriteLine($"[UdpStreamer] Sent frame #{_framesSent}, seq={_sequenceNumber}, size={packet.Length}, target={_targetEndPoint}");
+                Debug.WriteLine($"[UdpStreamer] Sent frame #{_framesSent}, seq={_sequenceNumber}, size={packet.Length}");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[UdpStreamer] Send error: {ex.Message}");
+            Debug.WriteLine($"[UdpStreamer] Send error: {ex.Message}");
         }
     }
 
     public void Stop()
     {
-        Console.WriteLine($"[UdpStreamer] Stopping. Total frames sent: {_framesSent}");
+        if (!_running) return;
+
+        Debug.WriteLine($"[UdpStreamer] Stopping. Total frames sent: {_framesSent}");
         _running = false;
         _udpClient?.Close();
         _udpClient?.Dispose();
         _udpClient = null;
+        _targetEndPoint = null;
         Stopped?.Invoke(this, EventArgs.Empty);
     }
 
     public void Dispose()
     {
         Stop();
-        _udpClient?.Dispose();
     }
 }
+

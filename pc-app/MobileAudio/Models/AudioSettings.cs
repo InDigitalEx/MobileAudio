@@ -1,13 +1,20 @@
 namespace MobileAudio.Models;
 
-public class AudioSettings
+/// <summary>
+/// Immutable audio streaming configuration.
+/// </summary>
+public sealed record AudioSettings(
+    int SampleRate = 48000,
+    int Channels = 2,
+    int BitsPerSample = 16,
+    int FrameDurationMs = 3,
+    int UdpPort = 5000,
+    int DiscoveryPort = 5001
+)
 {
-    public int SampleRate { get; set; } = 48000;
-    public int Channels { get; set; } = 2;
-    public int BitsPerSample { get; set; } = 16;
-    public int FrameDurationMs { get; set; } = 3;  // 3ms = 576 bytes, lower latency
-    public int UdpPort { get; set; } = 5000;
-    public int DiscoveryPort { get; set; } = 5001;
+    /// <summary>
+    /// Size of one audio frame in bytes.
+    /// </summary>
     public int BufferSize => SampleRate * Channels * (BitsPerSample / 8) * FrameDurationMs / 1000;
 }
 

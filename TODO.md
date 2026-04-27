@@ -1,46 +1,29 @@
-# MobileAudio Project TODO
+# Refactoring TODO
 
-## PC Application (C# WPF + NAudio)
-- [x] Create solution and project files
-- [x] Create App.xaml and App.xaml.cs
-- [x] Create MainWindow.xaml and MainWindow.xaml.cs
-- [x] Create AudioCapture.cs (WASAPI loopback, resampler, Console logging)
-- [x] Create UdpStreamer.cs (UDP streaming, Console logging)
-- [x] Create DiscoveryService.cs (auto-discovery broadcast)
-- [x] Create AudioVisualizer user control
-- [x] Create AudioSettings model
-- [x] Build passes
-- [x] Added in-app logger (LogTextBox in UI)
+## Android App
+- [x] Create NetworkConstants.kt
+- [x] Create AudioStats.kt
+- [x] Refactor AudioPlayer.kt
+- [x] Refactor AudioReceiver.kt (extract JitterBuffer, fix coroutines)
+- [x] Refactor DiscoveryListener.kt (delay instead of Thread.sleep)
+- [x] Refactor MainActivity.kt (remove double init, use sealed class for screens)
+- [x] Refactor ConnectScreen.kt (remove unused imports, simplify logic)
+- [x] Refactor PlayerScreen.kt (fix slider steps)
+- [x] Refactor AudioVisualizer.kt (replace 32 coroutines with InfiniteTransition)
+- [x] Cleanup Theme.kt (remove unused DarkCard, respect darkTheme)
+- [x] Cleanup Color.kt (remove unused DarkCard)
 
-## Android Application (Kotlin + Jetpack Compose)
-- [x] Create project build files
-- [x] Create AndroidManifest.xml
-- [x] Create MainActivity.kt
-- [x] Create AudioPlayer.kt (PERFORMANCE_MODE_LOW_LATENCY, Log.d)
-- [x] Create AudioReceiver.kt (jitter buffer, playback loop, Log.d)
-- [x] Create DiscoveryListener.kt (two-way broadcast + multicast lock)
-- [x] Create UI screens (Connect with device cards, Player)
-- [x] Create UI theme (Material3 dark)
-- [x] Create AudioVisualizer component
+## PC App
+- [x] Create NetworkHelper.cs
+- [x] Create BigEndianExtensions.cs
+- [x] Make AudioSettings.cs immutable (sealed record)
+- [x] Refactor AudioCapture.cs (fix resampling, reuse arrays, fix timing with Stopwatch)
+- [x] Refactor UdpStreamer.cs (fix dispose, use big-endian extensions)
+- [x] Refactor DiscoveryService.cs (async receive, proper cleanup, immutable device record)
+- [x] Refactor MainWindow.xaml.cs (extract UI creation, remove duplicate IP helper)
+- [x] Refactor AudioVisualizer.xaml.cs (fix nullability, division safety)
 
-## Device Discovery (completed)
-- [x] Two-way discovery: PC broadcasts itself, Android broadcasts itself
-- [x] PC shows list of found phones with friendly names (hostname)
-- [x] Android shows list of found PCs with friendly names (device model)
-- [x] Click/tap on discovered device auto-fills IP and connects
-- [x] Auto-cleanup of stale devices (10s TTL)
-- [x] Manual IP entry as fallback
-- [x] Android: WifiManager.MulticastLock for reliable broadcast reception
+## Verification
+- [ ] Verify Android build
+- [ ] Verify PC build
 
-## Documentation
-- [x] Create README.md with build and run instructions
-
-## Diagnostics (completed)
-- [x] Added Console.WriteLine logging to PC app
-- [x] Added Log.d logging to Android app
-- [x] Added in-app logger UI to PC app
-- [x] Fixed: MTU issue (DontFragment + 10ms frames = dropped packets)
-- [x] Fixed: Frame timing drift (PC sent faster than real-time)
-- [x] Fixed: Android jitter buffer growing unbounded
-- [x] Fixed: AudioTrack buffer accumulation causing 5s lag
-- [x] Reduced frame size from 10ms to 5ms for better MTU compatibility
