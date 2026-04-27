@@ -4,12 +4,13 @@ import android.util.Log
 import com.example.mobileaudio.audio.AudioPlayer
 import com.example.mobileaudio.audio.JitterBuffer
 import kotlinx.coroutines.*
-import kotlin.coroutines.coroutineContext
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetSocketAddress
 import java.net.SocketTimeoutException
 import java.nio.ByteBuffer
+import java.util.ArrayDeque
+import kotlin.coroutines.coroutineContext
 
 /**
  * Receives audio over UDP, manages a jitter buffer, and plays back via [AudioPlayer].
@@ -56,6 +57,10 @@ class AudioReceiver(
     @Volatile
     var latencyMs: Int = targetLatencyMs.coerceIn(10, NetworkConstants.MAX_LATENCY_MS)
         private set
+
+    /** Rolling window of instantaneous buffer latencies for averaging. */
+    private val latencyHistory = ArrayDeque<Int>()
+    private val latencyHistoryMaxSize = 50 // ~5s of samples at 100 packets/sec
 
     private val targetJitterBytes: Int
         get() = latencyMs * NetworkConstants.BYTES_PER_MS
@@ -138,6 +143,7 @@ class AudioReceiver(
         packetsLost = 0
         expectedSequence = 0u
         isPlaying = false
+        latencyHistory.clear()
     }
 
     private fun processPacket(packet: DatagramPacket) {
@@ -158,10 +164,26 @@ class AudioReceiver(
         val audioData = data.copyOfRange(NetworkConstants.PACKET_HEADER_BYTES, length)
         jitterBuffer.offer(audioData, maxJitterBytes)
 
+        // Track instantaneous latency for rolling average
+        val instantLatency = jitterBuffer.sizeBytes / NetworkConstants.BYTES_PER_MS
+        latencyHistory.addLast(instantLatency)
+        if (latencyHistory.size > latencyHistoryMaxSize) {
+            latencyHistory.removeFirst()
+        }
+
         if (packetsReceived <= 5 || packetsReceived % STATS_INTERVAL_PACKETS == 0) {
-            val stats = jitterBuffer.toStats(packetsReceived, packetsLost)
+            val avgLatency = if (latencyHistory.isNotEmpty()) {
+                latencyHistory.sum() / latencyHistory.size
+            } else 0
+
+            val stats = AudioStats(
+                packetsReceived = packetsReceived,
+                packetsLost = packetsLost,
+                latencyMs = instantLatency,
+                averageLatencyMs = avgLatency
+            )
             Log.d(TAG, "Packet #$packetsReceived seq=$seq size=${audioData.size} " +
-                    "latency=${stats.latencyMs}ms loss=${stats.lossPercent}%")
+                    "latency=${stats.latencyMs}ms avg=${stats.averageLatencyMs}ms loss=${stats.lossPercent}%")
             scope.launch(Dispatchers.Main) { onStatsUpdate(stats) }
         }
     }
@@ -222,4 +244,3 @@ class AudioReceiver(
         Log.d(TAG, "Playback loop ended")
     }
 }
-

@@ -21,6 +21,7 @@ fun PlayerScreen(
     packetsReceived: Int,
     packetLossPercent: Int,
     currentLatencyMs: Int,
+    averageLatencyMs: Int,
     onLatencyChange: (Int) -> Unit,
     onDisconnect: () -> Unit
 ) {
@@ -77,6 +78,7 @@ fun PlayerScreen(
 
                 LatencyControl(
                     currentLatencyMs = currentLatencyMs,
+                    averageLatencyMs = averageLatencyMs,
                     onLatencyChange = onLatencyChange
                 )
             }
@@ -100,6 +102,7 @@ fun PlayerScreen(
 @Composable
 private fun LatencyControl(
     currentLatencyMs: Int,
+    averageLatencyMs: Int,
     onLatencyChange: (Int) -> Unit
 ) {
     Column(
@@ -112,7 +115,6 @@ private fun LatencyControl(
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
         )
 
-        // Steps: 10,20,30,40,50,60,70,80 -> 7 intervals -> steps = 6
         val stepsCount = ((LATENCY_MAX - LATENCY_MIN) / LATENCY_STEP).toInt() - 1
 
         Slider(
@@ -131,6 +133,17 @@ private fun LatencyControl(
             text = latencyDescription(currentLatencyMs),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Average total latency display
+        Text(
+            text = "Средняя задержка: ${averageLatencyMs}ms",
+            style = MaterialTheme.typography.labelMedium,
+            color = if (averageLatencyMs <= 30) Teal40
+                    else if (averageLatencyMs <= 60) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                    else MaterialTheme.colorScheme.error
         )
     }
 }
@@ -156,4 +169,3 @@ private fun StatCard(label: String, value: String) {
         )
     }
 }
-

@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
                         packetsReceived = stats.packetsReceived,
                         packetLossPercent = stats.lossPercent,
                         currentLatencyMs = latencyMs,
+                        averageLatencyMs = stats.averageLatencyMs,
                         onLatencyChange = { newLatency ->
                             latencyMs = newLatency
                             audioReceiver?.setLatency(newLatency)
@@ -75,4 +76,3 @@ class MainActivity : ComponentActivity() {
         audioReceiver = null
     }
 }
-
