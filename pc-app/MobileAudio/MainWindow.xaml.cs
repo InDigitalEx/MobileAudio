@@ -20,7 +20,6 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _visualizerTimer;
     private byte[]? _lastFrame;
     private readonly object _frameLock = new();
-    private int _visualizerFrames;
 
     public MainWindow()
     {
@@ -31,10 +30,6 @@ public partial class MainWindow : Window
         _discoveryService = new DiscoveryService(_settings.DiscoveryPort, _settings.UdpPort);
 
         _audioCapture.FrameCaptured += OnFrameCaptured;
-        _audioCapture.CaptureStarted += (s, e) => Log("[MainWindow] Capture started");
-        _audioCapture.CaptureStopped += (s, e) => Log("[MainWindow] Capture stopped");
-        _udpStreamer.Started += (s, e) => Log("[MainWindow] Streamer started");
-        _udpStreamer.Stopped += (s, e) => Log("[MainWindow] Streamer stopped");
 
         _visualizerTimer = new DispatcherTimer
         {
@@ -46,18 +41,6 @@ public partial class MainWindow : Window
         Closing += OnWindowClosing;
     }
 
-    private void Log(string message)
-    {
-        Dispatcher.BeginInvoke(() =>
-        {
-            LogTextBox.AppendText($"[{DateTime.Now:HH:mm:ss.fff}] {message}{Environment.NewLine}");
-            LogScrollViewer.ScrollToEnd();
-        });
-    }
-
-    private int _framesCaptured;
-    private DateTime _lastStatsTime = DateTime.Now;
-
     private void OnFrameCaptured(object? sender, byte[] frame)
     {
         lock (_frameLock)
@@ -65,14 +48,6 @@ public partial class MainWindow : Window
             _lastFrame = frame;
         }
         _udpStreamer.SendFrame(frame);
-        _framesCaptured++;
-
-        // Log stats every 5 seconds
-        if ((DateTime.Now - _lastStatsTime).TotalSeconds >= 5)
-        {
-            _lastStatsTime = DateTime.Now;
-            Log($"[Stats] Frames captured: {_framesCaptured}, Streamer active: {_udpStreamer.IsStreaming}");
-        }
     }
 
     private void OnWindowLoaded(object sender, RoutedEventArgs e)
@@ -81,7 +56,6 @@ public partial class MainWindow : Window
         IpTextBox.Text = localIp;
         _discoveryService.DevicesUpdated += OnDevicesUpdated;
         _discoveryService.Start();
-        Log($"[MainWindow] Local IP: {localIp}");
     }
 
     private void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -103,25 +77,21 @@ public partial class MainWindow : Window
 
         try
         {
-            Log("[MainWindow] Starting capture and stream...");
             _audioCapture.Start();
             _udpStreamer.Start(targetIp, _settings.UdpPort);
             _visualizerTimer.Start();
             UpdateStatus(true);
             StartButton.IsEnabled = false;
             StopButton.IsEnabled = true;
-            Log("[MainWindow] Started successfully");
         }
         catch (Exception ex)
         {
-            Log($"[MainWindow] Start error: {ex}");
             MessageBox.Show($"Ошибка запуска: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
     private void StopButton_Click(object sender, RoutedEventArgs e)
     {
-        Log("[MainWindow] Stopping...");
         _udpStreamer.Stop();
         _audioCapture.Stop();
         _visualizerTimer.Stop();
@@ -129,7 +99,6 @@ public partial class MainWindow : Window
         UpdateStatus(false);
         StartButton.IsEnabled = true;
         StopButton.IsEnabled = false;
-        _visualizerFrames = 0;
     }
 
     private void CopyIpButton_Click(object sender, RoutedEventArgs e)
@@ -197,7 +166,6 @@ public partial class MainWindow : Window
                 border.MouseLeftButtonDown += (s, ev) =>
                 {
                     TargetIpTextBox.Text = device.IpAddress;
-                    Log($"[Discovery] Selected device: {device.DeviceName} ({device.IpAddress})");
                 };
 
                 DevicesPanel.Children.Add(border);
@@ -219,18 +187,8 @@ public partial class MainWindow : Window
             {
                 var levels = _audioCapture.GetAudioLevels(frame, 48);
                 Visualizer.UpdateLevels(levels);
-                _visualizerFrames++;
-                if (_visualizerFrames % 20 == 0)
-                    Log($"[MainWindow] Visualizer updated, frames shown: {_visualizerFrames}");
             }
-            catch (Exception ex)
-            {
-                Log($"[MainWindow] Visualizer error: {ex.Message}");
-            }
-        }
-        else
-        {
-            Log("[MainWindow] No frame for visualizer");
+            catch { }
         }
     }
 

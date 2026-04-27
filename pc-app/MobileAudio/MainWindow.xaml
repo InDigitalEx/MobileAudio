@@ -138,8 +138,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="140"/>
-                <RowDefinition Height="120"/>
+                <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
             <!-- IP Address -->
@@ -202,7 +201,7 @@
             <Border Grid.Row="4" 
                     Background="#FF1E1E1E" 
                     CornerRadius="12" 
-                    Padding="16" Margin="0,0,0,8">
+                    Padding="16">
                 <Grid>
                     <TextBlock Text="Аудио визуализатор" 
                                FontSize="11" Opacity="0.4" 
@@ -212,23 +211,6 @@
                                         HorizontalAlignment="Stretch"
                                         Margin="0,20,0,0"/>
                 </Grid>
-            </Border>
-
-            <!-- Logger -->
-            <Border Grid.Row="5" 
-                    Background="#FF151515" 
-                    CornerRadius="8" 
-                    Padding="8">
-                <ScrollViewer x:Name="LogScrollViewer" VerticalScrollBarVisibility="Auto">
-                    <TextBox x:Name="LogTextBox"
-                             Background="Transparent"
-                             Foreground="#FF888888"
-                             FontFamily="Consolas"
-                             FontSize="11"
-                             IsReadOnly="True"
-                             TextWrapping="Wrap"
-                             BorderThickness="0"/>
-                </ScrollViewer>
             </Border>
         </Grid>
 
